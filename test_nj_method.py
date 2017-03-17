@@ -30,15 +30,19 @@ abund_cols = get_abundance_cols(galah_cannon.colnames)
 # for ra_center, dec_center in zip([],[]):
 #
 # convert ra and dec to astropy coordinates
-ra_center = 57.
-dec_center = 24.
-search_dist = 4.
+# ra_center = 57.
+# dec_center = 24.
+search_dist = 5.
 ra_dec_coord = coord.ICRS(ra=np.array(galah_cannon['ra'])*u.degree,
                           dec=np.array(galah_cannon['dec'])*u.degree)
-for ra_center, dec_center in zip(clusters_ra, clusters_dec):
+move_to_dir('Stellar_neighbour_tree')
+for i_grid in range(len(clusters_ra)):
+    ra_center = clusters_ra[i_grid]
+    dec_center = clusters_dec[i_grid]
     if ra_center is np.nan or dec_center is np.nan:
         continue
-    stars_arc_dist = ra_dec_coord.separation(coord.ICRS(ra=ra_center*u.degree, dec=dec_center*u.degree))
+    stars_arc_dist = ra_dec_coord.separation(coord.ICRS(ra=ra_center*u.degree,
+                                                        dec=dec_center*u.degree))
     stars_in_area = stars_arc_dist < search_dist*u.degree
     n_stars_in_area = np.sum(stars_in_area)
     print 'Number of stars found in search location: '+str(n_stars_in_area)
@@ -49,7 +53,7 @@ for ra_center, dec_center in zip(clusters_ra, clusters_dec):
     galah_cannon_abund_data_sebset = np.array(galah_cannon_subset[abund_cols].to_pandas())
     norm_params = normalize_data(galah_cannon_abund_data_sebset, method='standardize')
 
-    move_to_dir('Stellar_neighbour_tree_ra_{:0.1f}_dec_{:0.1f}_rad_{:0.1f}'.format(ra_center, dec_center, search_dist))
+    move_to_dir('grid_{:03.0f}_ra_{:0.1f}_dec_{:0.1f}_rad_{:0.1f}'.format(i_grid, ra_center, dec_center, search_dist))
     output_nwm_file = 'distances_network.nwk'
     # compute distances and create phylogenetic tree from distance information
     if not os.path.isfile(output_nwm_file):

@@ -16,20 +16,17 @@ def mark_objects(tree, targets, path='tree.png'):
     # also count number of marks
     n_marks = 0
     for branch in tree_copy.traverse():
+        b_style = NodeStyle()
+        b_style['size'] = 0
         if branch.is_leaf():
             branch_sobject_id = np.int64(branch.name)
             if branch_sobject_id in targets:
+                b_style['hz_line_color'] = 'red'
+                b_style['hz_line_width'] = 5
                 b_facet = CircleFace(radius=10, color='red', style='circle')
                 branch.add_face(b_facet, 0, position='branch-right')
                 n_marks += 1
-            else:
-                b_style = NodeStyle()
-                b_style['size'] = 0
-                branch.set_style(b_style)
-        else:
-            b_style = NodeStyle()
-            b_style['size'] = 0
-            branch.set_style(b_style)
+        branch.set_style(b_style)
     if n_marks > 0:
         tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
 
