@@ -61,8 +61,6 @@ galah_filter_ok.filter_objects(galah_cannon, galah_flats, identifier='sobject_id
 # create a subset defined by filters above
 galah_cannon_subset = galah_filter_ok.apply_filter(galah_cannon)
 
-raise SystemExit('Exit')
-
 # for ra_center, dec_center in zip([],[]):
 #
 # convert ra and dec to astropy coordinates
@@ -71,65 +69,56 @@ raise SystemExit('Exit')
 search_dist = 5.
 ra_dec_coord = coord.ICRS(ra=np.array(galah_cannon['ra'])*u.degree,
                           dec=np.array(galah_cannon['dec'])*u.degree)
-move_to_dir('Stellar_neighbour_tree')
-for i_grid in range(len(clusters_ra)):
-    ra_center = clusters_ra[i_grid]
-    dec_center = clusters_dec[i_grid]
-    if ra_center is np.nan or dec_center is np.nan:
-        continue
-    stars_arc_dist = ra_dec_coord.separation(coord.ICRS(ra=ra_center*u.degree,
-                                                        dec=dec_center*u.degree))
-    stars_in_area = stars_arc_dist < search_dist*u.degree
-    n_stars_in_area = np.sum(stars_in_area)
-    print 'Number of stars found in search location: '+str(n_stars_in_area)
-    if n_stars_in_area < 50:
-        continue
-    # create a subset of the dataset
-    galah_cannon_subset = galah_cannon[stars_in_area]
-    galah_cannon_abund_data_sebset = np.array(galah_cannon_subset[abund_cols].to_pandas())
-    norm_params = normalize_data(galah_cannon_abund_data_sebset, method='standardize')
+move_to_dir('Stellar_neighbour_tree_abund_flag0_snrc1_chi2_prob')
 
-    move_to_dir('grid_{:03.0f}_ra_{:0.1f}_dec_{:0.1f}_rad_{:0.1f}'.format(i_grid, ra_center, dec_center, search_dist))
-    output_nwm_file = 'distances_network.nwk'
-    # compute distances and create phylogenetic tree from distance information
-    if not os.path.isfile(output_nwm_file):
-        distances = manhattan_distances(galah_cannon_abund_data_sebset)
-        # export distances to be used by megacc procedure
-        txt = open('distances.meg', 'w')
-        txt.write('#mega\n')
-        txt.write('!Title Mega_distances_file;\n')
-        txt.write('!Description Abundances_test_file;\n')
-        txt.write('!Format DataType=distance DataFormat=lowerleft;\n')
-        # export all taxa
-        for s_id in galah_cannon_subset['sobject_id']:
-            txt.write('#'+str(s_id)+'\n')
-        # output settings
-        for i_r in range(1, distances.shape[0]):
-            txt.write(' '.join(['{:0.4f}'.format(f) for f in distances[i_r, 0: i_r]])+'\n')
-        txt.close()
-        os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
+galah_cannon_subset_abund = np.array(galah_cannon_subset[abund_cols].to_pandas())
+norm_params = normalize_data(galah_cannon_subset_abund, method='standardize')
 
-        # - OR -
-        # alternative way to build the tree, much slower option
-        # dm = DistanceMatrix(distances)
-        # nj_tree = nj(dm)
-        # print(nj_tree.ascii_art())
+output_nwm_file = 'distances_network.nwk'
+# compute distances and create phylogenetic tree from distance information
+if not os.path.isfile(output_nwm_file):
+    print 'Computing data distances'
+    distances = manhattan_distances(galah_cannon_subset_abund)
+    # # export distances to be used by megacc procedure
+    # txt = open('distances.meg', 'w')
+    # txt.write('#mega\n')
+    # txt.write('!Title Mega_distances_file;\n')
+    # txt.write('!Description Abundances_test_file;\n')
+    # txt.write('!Format DataType=distance DataFormat=lowerleft;\n')
+    # # export all taxa
+    # print 'Exporting taxa'
+    # for s_id in galah_cannon_subset['sobject_id']:
+    #     txt.write('#'+str(s_id)+'\n')
+    # # output settings
+    # for i_r in range(1, distances.shape[0]):
+    #     txt.write(' '.join(['{:0.4f}'.format(f) for f in distances[i_r, 0: i_r]])+'\n')
+    # txt.close()
+    # print 'Running megacc software'
+    # os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
 
-    # read output tree file
-    if os.path.isfile(output_nwm_file):
-        txt = open(output_nwm_file, 'r')
-        tree_struct = Tree(file.readline(txt)[:-1])
-        txt.close()
-    else:
-        print 'ERROR: check megacc as it did not produce the following file '+output_nwm_file
-    print 'Plotting graphs'
-    for cluster in np.unique(stars_cluster_data['cluster_name']):
-        cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-        mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
-    for abund in abund_cols:
-        colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
-    os.chdir('..')
+    # - OR -
+    # alternative way to build the tree, much slower option
+    print 'Generating tree from distance matrix'
+    dm = DistanceMatrix(distances)
+    nj_tree = nj(dm)
+    # print(nj_tree.ascii_art())
+
+# read output tree file
+if os.path.isfile(output_nwm_file):
+    txt = open(output_nwm_file, 'r')
+    tree_struct = Tree(file.readline(txt)[:-1])
+    txt.close()
+else:
+    print 'ERROR: check megacc as it did not produce the following file '+output_nwm_file
+
+# print 'Plotting graphs'
+# for cluster in np.unique(stars_cluster_data['cluster_name']):
+#     cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
+#     mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+# colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
+# colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
+# colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
+# for abund in abund_cols:
+#     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
+# os.chdir('..')
 

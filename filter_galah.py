@@ -36,7 +36,6 @@ class FILTER:
         :param idx:
         :return:
         """
-        print idx
         if self.idx_ok is None:
             self.idx_ok = idx
         else:

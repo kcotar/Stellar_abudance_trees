@@ -14,25 +14,30 @@ imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.p
 from norm import *
 
 from colorize_tree import *
+from colorize_sky import *
 
 from ete3 import Tree
 
+plot_abund_trees = True
 
 galah_data_dir = '/home/klemen/GALAH_data/'
 nj_data_dir = '/home/klemen/NJ_tree_settings/'
 # Galah parameters and abundance data
 galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
+galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')
 # known stars in clusters in this dataset
 stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
 clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 abund_cols = get_abundance_cols(galah_cannon.colnames)
+
+plot_ra_dec_attribute(galah_param, 'rv_guess')
 
 # for ra_center, dec_center in zip([],[]):
 #
 # convert ra and dec to astropy coordinates
 # ra_center = 57.
 # dec_center = 24.
-search_dist = 5.
+search_dist = 15.
 ra_dec_coord = coord.ICRS(ra=np.array(galah_cannon['ra'])*u.degree,
                           dec=np.array(galah_cannon['dec'])*u.degree)
 move_to_dir('Stellar_neighbour_tree')
@@ -46,12 +51,13 @@ for i_grid in range(len(clusters_ra)):
     stars_in_area = stars_arc_dist < search_dist*u.degree
     n_stars_in_area = np.sum(stars_in_area)
     print 'Number of stars found in search location: '+str(n_stars_in_area)
-    if n_stars_in_area < 50:
+    if n_stars_in_area < 50 or n_stars_in_area > 10000:
         continue
     # create a subset of the dataset
     galah_cannon_subset = galah_cannon[stars_in_area]
+    galah_param_subset = galah_param[stars_in_area]
     galah_cannon_abund_data_sebset = np.array(galah_cannon_subset[abund_cols].to_pandas())
-    norm_params = normalize_data(galah_cannon_abund_data_sebset, method='standardize')
+    abund_norm_params = normalize_data(galah_cannon_abund_data_sebset, method='standardize')
 
     move_to_dir('grid_{:03.0f}_ra_{:0.1f}_dec_{:0.1f}_rad_{:0.1f}'.format(i_grid, ra_center, dec_center, search_dist))
     output_nwm_file = 'distances_network.nwk'
@@ -80,20 +86,27 @@ for i_grid in range(len(clusters_ra)):
         # print(nj_tree.ascii_art())
 
     # read output tree file
-    if os.path.isfile(output_nwm_file):
-        txt = open(output_nwm_file, 'r')
-        tree_struct = Tree(file.readline(txt)[:-1])
-        txt.close()
-    else:
-        print 'ERROR: check megacc as it did not produce the following file '+output_nwm_file
-    print 'Plotting graphs'
-    for cluster in np.unique(stars_cluster_data['cluster_name']):
-        cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-        mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
-    for abund in abund_cols:
-        colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
-    os.chdir('..')
+    if plot_abund_trees:
+        if os.path.isfile(output_nwm_file):
+            txt = open(output_nwm_file, 'r')
+            tree_struct = Tree(file.readline(txt)[:-1])
+            txt.close()
+        else:
+            print 'ERROR: check megacc as it did not produce the following file '+output_nwm_file
+        print 'Plotting graphs'
+        for cluster in np.unique(stars_cluster_data['cluster_name']):
+            cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
+            mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+        colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
+        colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
+        colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
+        colorize_tree(tree_struct, galah_param_subset, 'rv_guess', path='tree_rv.png')
+        # for abund in abund_cols:
+        #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
 
+    # traverse the tree from bottom to to the leaves of branches
+    # plot_ra_dec_locations(galah_cannon_subset, path='sky_pos.png')
+    # plot_ra_dec_attribute(galah_param_subset, 'rv_guess', path='sky_pos_rv.png')
+
+    # return to parent directory
+    os.chdir('..')
