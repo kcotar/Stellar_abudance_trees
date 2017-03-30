@@ -30,7 +30,7 @@ stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
 clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 abund_cols = get_abundance_cols(galah_cannon.colnames)
 
-plot_ra_dec_attribute(galah_param, 'rv_guess')
+# plot_ra_dec_attribute(galah_param, 'rv_guess')
 
 # for ra_center, dec_center in zip([],[]):
 #
@@ -97,12 +97,16 @@ for i_grid in range(len(clusters_ra)):
         for cluster in np.unique(stars_cluster_data['cluster_name']):
             cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
             mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+        colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree-branches_logg.png')
+        colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree-branches_feh.png')
+        colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree-branches_teff.png')
         colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
         colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
         colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
         colorize_tree(tree_struct, galah_param_subset, 'rv_guess', path='tree_rv.png')
-        # for abund in abund_cols:
-        #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
+        for abund in abund_cols:
+            colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree-branches_abund_'+abund+'.png')
+            colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
 
     # traverse the tree from bottom to to the leaves of branches
     # plot_ra_dec_locations(galah_cannon_subset, path='sky_pos.png')

@@ -69,3 +69,39 @@ def colorize_tree(tree, dataset, feature, path='tree.png'):
             b_style['size'] = 0
             branch.set_style(b_style)
     tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
+
+
+def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png'):
+    # create a copy of three that will be modified later on
+    tree_copy = tree.copy('newick')
+    # define tree plot style
+    tree_plot = TreeStyle()
+    tree_plot.show_leaf_name = False
+    tree_plot.show_branch_length = False
+    tree_plot.show_branch_support = False
+    tree_plot.mode = 'c'
+    # determine colour set for given dataset
+    colorize_dataset = dataset[feature]
+    n_steps = 300
+    color_labels = list(Color('red').range_to(Color('blue'), n_steps))
+    colour_data_min = np.nanpercentile(colorize_dataset, 1.)
+    colour_data_max = np.nanpercentile(colorize_dataset, 99.)
+    colour_data_range = colour_data_min + np.arange(0, n_steps) * (colour_data_max - colour_data_min) / n_steps
+    # traverse the tree and colorize the tree branches along traversing
+    for branch in tree_copy.traverse():
+        leaves = np.int64(branch.get_leaf_names())
+        idx_leaves = np.in1d(dataset['sobject_id'], leaves, assume_unique=True, invert=False)
+        if np.sum(idx_leaves) == 0:
+            # none of the leaves was found in the original dataset or something went wrong
+            continue
+        data_val_mean = np.nanmean(colorize_dataset[idx_leaves])
+        colour_string = str(color_labels[np.nanargmin(np.abs(colour_data_range - data_val_mean))])
+        # node/branch style
+        b_style = NodeStyle()
+        b_style['size'] = 0
+        b_style['hz_line_color'] = colour_string
+        b_style['hz_line_width'] = 40
+        b_style['vt_line_color'] = colour_string
+        b_style['vt_line_width'] = 40
+        branch.set_style(b_style)
+    tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
