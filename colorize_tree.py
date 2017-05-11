@@ -54,16 +54,17 @@ def colorize_tree(tree, dataset, feature, path='tree.png'):
         if branch.is_leaf():
             idx = np.where(dataset['sobject_id'] == np.int64(branch.name))
             data_val = colorize_dataset[idx]
-            colour_string = str(color_labels[np.nanargmin(np.abs(colour_data_range - data_val))])
-            # node style
-            # b_style = NodeStyle()
-            # b_style['fgcolor'] = colour_string
-            # b_style['size'] = 0
-            # b_style['hz_line_color'] = colour_string
-            # b_style['hz_line_width'] = 40
-            # branch.set_style(b_style)
-            b_facet = CircleFace(radius=10, color=colour_string, style='circle')
-            branch.add_face(b_facet, 0, position='float')
+            if np.isfinite(data_val):
+                colour_string = str(color_labels[np.nanargmin(np.abs(colour_data_range - data_val))])
+                # node style
+                # b_style = NodeStyle()
+                # b_style['fgcolor'] = colour_string
+                # b_style['size'] = 0
+                # b_style['hz_line_color'] = colour_string
+                # b_style['hz_line_width'] = 40
+                # branch.set_style(b_style)
+                b_facet = CircleFace(radius=10, color=colour_string, style='circle')
+                branch.add_face(b_facet, 0, position='float')
         else:
             b_style = NodeStyle()
             b_style['size'] = 0

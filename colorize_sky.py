@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 
+
 def _prepare_ra_dec(data):
     ra = data['ra']
     idx_trans = ra > 180

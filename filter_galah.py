@@ -89,3 +89,15 @@ class FILTER:
         else:
             idx_use = np.in1d(data[identifier], object_list[identifier], assume_unique=True, invert=True)
         self._merge_ok(idx_use)
+
+    def filter_valid_rows(self, data, cols=None):
+        """
+
+        :param data:
+        :param cols:
+        :return:
+        """
+        if cols is None:
+            cols = data.colnames
+        idx_use = np.isfinite(data[cols].to_pandas().values).all(axis=1)
+        self._merge_ok(idx_use)

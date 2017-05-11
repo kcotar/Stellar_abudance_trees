@@ -1,4 +1,4 @@
-import os, imp
+import os, imp, time
 import numpy as np
 import astropy.units as u
 import astropy.coordinates as coord
@@ -23,31 +23,41 @@ galah_data_dir = '/home/klemen/GALAH_data/'
 nj_data_dir = '/home/klemen/NJ_tree_settings/'
 # Galah parameters and abundance data
 print 'Reading data'
-galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
-galah_general = Table.read(galah_data_dir+'sobject_iraf_general_1.1.fits')
-galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')
+galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
 galah_tsne_class = Table.read(galah_data_dir+'tsne_class_1_0.csv')
 galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
 galah_flats = Table.read(galah_data_dir+'flat_objects.csv')
 # known stars in clusters in this dataset
 stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
 clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
+
+# get cannon abundance cols
 abund_cols = get_abundance_cols(galah_cannon.colnames)
+# determine which of those cols are ok to use (have at leas some data)
+abund_cols_use = [col for col in abund_cols if np.isfinite(galah_cannon[col]).any()]
 
 # create a filter that will be used to create a subset of data used in  abundance analysis
+print 'Input data lines: '+str(len(galah_cannon))
 print 'Creating filters for data subset'
 galah_filter_ok = FILTER(verbose=True)
 # remove data from the initial observations
-# galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140203000000000, comparator='>')
+galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140203000000000, comparator='>')
 
-# filter by cannon set flags
-galah_filter_ok._merge_ok(galah_cannon['flag_cannon'] == '0.0')
+# filter by cannon set flags - parameters flag, must be set to 0 for valid data
+# galah_filter_ok._merge_ok(galah_cannon['flag_cannon'] == 0)
+
+# filter by cannon set flags - abundances flags, all flags must be set to 0 for valid data
+for abund_col in abund_cols_use:
+    galah_filter_ok._merge_ok(galah_cannon['flag_'+abund_col] == 0)
+
+# remove rows with any nan values in any of the abundance columns/attributes
+galah_filter_ok.filter_valid_rows(galah_cannon, cols=abund_cols_use)
 
 # filter by CCD SNR values
-galah_filter_ok.filter_attribute(galah_general, attribute='snr_c1_guess', value=20, comparator='>')
+# galah_filter_ok.filter_attribute(galah_cannon, attribute='snr2_c1_iraf', value=20, comparator='>')
 
 # filter by cannon CHI2 value
-galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=35000, comparator='<')
+galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=60000, comparator='<')
 
 # filter out problematic stars as detected by Gregor
 galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class, identifier='sobject_id')
@@ -61,17 +71,19 @@ galah_filter_ok.filter_objects(galah_cannon, galah_flats, identifier='sobject_id
 # create a subset defined by filters above
 galah_cannon_subset = galah_filter_ok.apply_filter(galah_cannon)
 
+print 'Input filtered data lines: '+str(len(galah_cannon_subset))
+
 # for ra_center, dec_center in zip([],[]):
 #
 # convert ra and dec to astropy coordinates
 # ra_center = 57.
 # dec_center = 24.
-search_dist = 5.
-ra_dec_coord = coord.ICRS(ra=np.array(galah_cannon['ra'])*u.degree,
-                          dec=np.array(galah_cannon['dec'])*u.degree)
-move_to_dir('Stellar_neighbour_tree_abund_flag0_snrc1_chi2_prob')
+use_megacc = False
 
-galah_cannon_subset_abund = np.array(galah_cannon_subset[abund_cols].to_pandas())
+move_to_dir('NJ_tree_dwarfs_2.1.7_mainrun_abundflags_chi2_prob_skbio')
+
+galah_cannon_subset_abund = np.array(galah_cannon_subset[abund_cols_use].to_pandas())
+# standardize (mean=0, std=1) individual abundace column
 norm_params = normalize_data(galah_cannon_subset_abund, method='standardize')
 
 output_nwm_file = 'distances_network.nwk'
@@ -79,29 +91,40 @@ output_nwm_file = 'distances_network.nwk'
 if not os.path.isfile(output_nwm_file):
     print 'Computing data distances'
     distances = manhattan_distances(galah_cannon_subset_abund)
-    # # export distances to be used by megacc procedure
-    # txt = open('distances.meg', 'w')
-    # txt.write('#mega\n')
-    # txt.write('!Title Mega_distances_file;\n')
-    # txt.write('!Description Abundances_test_file;\n')
-    # txt.write('!Format DataType=distance DataFormat=lowerleft;\n')
-    # # export all taxa
-    # print 'Exporting taxa'
-    # for s_id in galah_cannon_subset['sobject_id']:
-    #     txt.write('#'+str(s_id)+'\n')
-    # # output settings
-    # for i_r in range(1, distances.shape[0]):
-    #     txt.write(' '.join(['{:0.4f}'.format(f) for f in distances[i_r, 0: i_r]])+'\n')
-    # txt.close()
-    # print 'Running megacc software'
-    # os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
 
-    # - OR -
-    # alternative way to build the tree, much slower option
-    print 'Generating tree from distance matrix'
-    dm = DistanceMatrix(distances)
-    nj_tree = nj(dm)
-    # print(nj_tree.ascii_art())
+    print distances[250:265, :15]
+    if use_megacc:
+        # export distances to be used by megacc procedure
+        txt = open('distances.meg', 'w')
+        txt.write('#mega\n')
+        txt.write('!Title Mega_distances_file;\n')
+        txt.write('!Description Abundances_test_file;\n')
+        txt.write('!Format DataType=distance DataFormat=lowerleft;\n')
+        # export all taxa
+        print 'Exporting taxa'
+        for s_id in galah_cannon_subset['sobject_id']:
+            txt.write('#'+str(s_id)+'\n')
+        # output settings
+        time_start = time.time()
+        for i_r in range(1, distances.shape[0]):
+            if i_r % 2000 == 0:
+                minutes = (time.time() - time_start) / 60.
+                print ' {0}: {1}min'.format(i_r, minutes)
+                time_start = time.time()
+            txt.write(' '.join(['{:0.3f}'.format(f) for f in distances[i_r, 0: i_r]])+'\n')
+        txt.close()
+        print 'Running megacc software'
+        os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
+    else:
+        # alternative way to build the tree, much slower option
+        print 'Initialize distance matrix object'
+        dm = DistanceMatrix(distances, galah_cannon_subset['sobject_id'].data)  # data, ids
+        print 'Generating tree from distance matrix'
+        nj_tree = nj(dm)
+        dm = None
+        # export tree to mwk file
+        nj_tree.write(output_nwm_file, format='newick')
+        # print(nj_tree.ascii_art())
 
 # read output tree file
 if os.path.isfile(output_nwm_file):
