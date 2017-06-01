@@ -28,6 +28,7 @@ def mark_objects(tree, targets, path='tree.png'):
                 n_marks += 1
         branch.set_style(b_style)
     if n_marks > 0:
+        print '  marked: '+str(n_marks)
         tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
 
 

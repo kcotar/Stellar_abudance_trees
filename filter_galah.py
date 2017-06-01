@@ -41,6 +41,8 @@ class FILTER:
         else:
             self.idx_ok = np.logical_and(self.idx_ok, idx)
         self.n_ok = np.sum(self.idx_ok)
+        if self.verbose:
+            print 'Ok lines: '+str(self.n_ok)
 
     def _get_logical_operation(self, logical_str):
         """
@@ -76,18 +78,19 @@ class FILTER:
                     idx_use = eval_func(data[attribute], value)
         self._merge_ok(idx_use)
 
-    def filter_objects(self, data, object_list, identifier='sobject_id'):
+    def filter_objects(self, data, object_list, identifier='sobject_id', invert=True):
         """
 
         :param data:
         :param object_list:
         :param identifier:
+        :param invert:
         :return:
         """
         if identifier not in data.colnames or identifier not in object_list.colnames:
             raise SyntaxError('Identifier '+identifier+' not present in one of the data sets.')
         else:
-            idx_use = np.in1d(data[identifier], object_list[identifier], assume_unique=True, invert=True)
+            idx_use = np.in1d(data[identifier], object_list[identifier], assume_unique=True, invert=invert)
         self._merge_ok(idx_use)
 
     def filter_valid_rows(self, data, cols=None):
