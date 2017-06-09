@@ -1,10 +1,11 @@
 import os, imp, time
+import itertools
 
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
 
-from sklearn.metrics.pairwise import manhattan_distances
+from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
 from skbio import DistanceMatrix
 from skbio.tree import nj
 from astropy.table import Table, join
@@ -13,6 +14,12 @@ imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir, get_abundance_cols, define_cluster_centers, determine_clusters_abundance_deviation, get_multipler
 imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
 from norm import *
+imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
+from veltrans import *
+imp.load_source('distf', '../tSNE_test/distances.py')
+from distf import *
+imp.load_source('vectorcalc', '../Aquarius_membership/vector_plane_calculations.py')
+from vectorcalc import *
 
 from colorize_tree import *
 from filter_galah import *
@@ -25,8 +32,10 @@ from ete3 import Tree
 
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = False
+plot_overall_graphs = True
 perfrom_data_analysis = True
+investigate_repeated = True
+save_results = True
 suffix = ''
 
 # ------------------------------------------------------------------
@@ -34,12 +43,14 @@ suffix = ''
 # ------------------------------------------------------------------
 
 galah_data_dir = '/home/klemen/GALAH_data/'
+actions_data_dir = '/home/klemen/Aquarius_membership/'
 nj_data_dir = '/home/klemen/NJ_tree_settings/'
 # Galah parameters and abundance data
 print 'Reading data'
 # galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
 galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
-galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')['sobject_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess']
+galah_cannon['galah_id'].name = 'galah_id_old'  # rename old reduction parameters
+galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.csv')['sobject_id', 'galah_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess']
 galah_tsne_class = Table.read(galah_data_dir+'tsne_class_1_0.csv')
 galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
 galah_flats = Table.read(galah_data_dir+'flat_objects.csv')
@@ -146,8 +157,9 @@ if phylip_shape:
 elif use_megacc:
     output_nwm_file = 'distances_network.nwk'
     suffix += '_megacc'
-
-move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2'+suffix)
+# distance computation
+suffix += '_kulczynski'
+move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -156,7 +168,11 @@ move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2'+suffix)
 # compute distances and create phylogenetic tree from distance information
 if not os.path.isfile(output_nwm_file):
     print 'Computing data distances'
-    distances = manhattan_distances(galah_cannon_subset_abund)
+    # manhattan distance
+    distances = kulczynski_distance(galah_cannon_subset_abund)
+    # OR any other distance computation from distances.py
+    # manhattan_distances, euclidean_distances
+    # canberra_distance, kulczynski_distance, sorensen_distance, bray_curtis_similarity, czekanovski_dice_distance
 
     # print distances[250:265, :15]
     if phylip_shape:
@@ -243,34 +259,93 @@ if plot_overall_graphs:
 if not perfrom_data_analysis:
     raise SystemExit
 
-from galpy.potential import MWPotential2014
-from galpy.orbit import Orbit
-from galpy.actionAngle import actionAngleStaeckel, estimateDeltaStaeckel
 
 # join datasets
-galah_tgas = join(galah_cannon_subset, galah_tgas_xmatch, keys='sobject_id', join_type='inner')
+actions_data = Table.read(galah_data_dir+'galah_tgas_xmatch_actions.fits')['sobject_id', 'J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z', 'Theta_R', 'Theta_Phi', 'Theta_Z',
+                                                                                     'ra_gaia', 'dec_gaia', 'parallax', 'pmra', 'pmdec']
+# actions_data = actions_data[np.isfinite(actions_data['J_R'])].filled()
+galah_tgas = join(galah_cannon_subset, actions_data, keys='sobject_id', join_type='inner')
 
-# remove units as they are later assigned to every attribute
-galah_tgas['rv_guess'].unit = ''
-print 'Creating orbits and computing orbital information'
-# create new field in galah-tgas set
-for object in galah_tgas:
 
-    # create orbit object
-    orbit = Orbit(vxvv=[object['ra_gaia'] * un.deg,
-                        object['dec_gaia'] * un.deg,
-                        1./object['parallax'] * un.kpc,
-                        object['pmra'] * un.mas/un.yr,
-                        object['pmdec'] * un.mas/un.yr,
-                        object['rv_guess'] * un.km/un.s], radec=True)
-    ts = np.linspace(0, 15., 100) * un.Gyr
-    ts2 = np.linspace(10, 15., 25) * un.Gyr
-    ts3 = np.linspace(5, 10., 25) * un.Gyr
-    orbit.integrate(ts, MWPotential2014)
-    d1 = estimateDeltaStaeckel(MWPotential2014, orbit.R(ts), orbit.z(ts))
-    orbit.integrate(ts2, MWPotential2014)
-    d2 = estimateDeltaStaeckel(MWPotential2014, orbit.R(ts2), orbit.z(ts2))
-    orbit.integrate(ts3, MWPotential2014)
-    d3 = estimateDeltaStaeckel(MWPotential2014, orbit.R(ts3), orbit.z(ts3))
-    print d1, d2, d3
+# determine distances between pairs of repeated observations of the same object
+if investigate_repeated:
+    print 'Repeated obs graph distances'
+    topology_dist = list([])
+    if save_results:
+        txt_file = open('repeted_obs_dist.txt', 'w')
+    id_uniq, id_count = np.unique(galah_tgas['galah_id'], return_counts=True)
+    for galah_id in id_uniq[id_count>=2]:
+        s_ids_repeated = galah_tgas['sobject_id'][galah_tgas['galah_id'] == galah_id]._data
+        out_str = str(galah_id)+':'
+        for s_ids_comp in itertools.combinations(s_ids_repeated, 2):
+            if s_ids_comp[0] == s_ids_comp[1]:
+                dist = 0
+            else:
+                dist = tree_struct.get_distance(str(s_ids_comp[0]), str(s_ids_comp[1]), topology_only=True)
+            out_str += ' '+str(int(dist))
+            topology_dist.append(dist)
+        if save_results:
+            txt_file.write(out_str+'\n')
+        else:
+            print out_str
+    # mean topology distance of all repeated observations - aka quality of the tree
+    mean_topology_dist = np.mean(topology_dist)
+    if save_results:
+        txt_file.write('Mean distance: '+str(mean_topology_dist)+'\n')
+        txt_file.close()
+    else:
+        print mean_topology_dist
 
+
+# raise SystemExit
+# start traversing the tree
+print 'Traversing tree leaves'
+if save_results:
+    txt_file = open('leaves_obs.txt', 'w')
+for t_node in tree_struct.traverse():
+    if t_node.name == '':
+        node_desc = t_node.get_descendants()
+        if len(node_desc) == 2:  # get final branches
+            s_obj = list([])
+            for node in node_desc:
+                node_name = node.name
+                if node_name != '':
+                    s_obj.append(node_name)
+            if not (np.array(s_obj) == '').any():
+                idx_galah_tgas = np.where(np.in1d(galah_tgas['sobject_id'], np.int64(s_obj)))
+                # node_data = galah_tgas[idx_galah_tgas]['J_R', 'L_Z', 'J_Z'].to_pandas().values
+                if len(idx_galah_tgas[0]) == 2:
+                    # node_dist = np.sum(np.abs(node_data[0]-node_data[1]))
+                    # compute xyz velocities
+                    galah_tgas_sub = galah_tgas[idx_galah_tgas]
+                    xyz_pos = coord.SkyCoord(ra=galah_tgas_sub['ra_gaia']*un.deg,
+                                             dec=galah_tgas_sub['dec_gaia']*un.deg,
+                                             distance=1e3/galah_tgas_sub['parallax']*un.pc).cartesian
+                    xyz_vel = motion_to_cartesic(galah_tgas_sub['ra_gaia'], galah_tgas_sub['dec_gaia'],
+                                                 galah_tgas_sub['pmra'],
+                                                 galah_tgas_sub['pmdec'], galah_tgas_sub['rv_guess'],
+                                                 plx=galah_tgas_sub['parallax']).T
+                    stream_pred = mean_velocity(xyz_vel)
+                    stream_plane_intersect = stream_plane_vector_intersect(xyz_pos, xyz_vel, stream_pred)
+                    intersect_dist = points_distance(stream_plane_intersect[0], stream_plane_intersect[1])
+                    vel_dist = np.sum(np.abs(xyz_vel[0] - xyz_vel[1]))
+                    # if node_dist < 0.02:
+                    #     print s_obj
+                    if intersect_dist < 500 and vel_dist < 50:
+                        if save_results:
+                            txt_file.write('sobject_ids: '+' '.join(s_obj) + '\n')
+                            txt_file.write('Dist veloc: '+str(vel_dist) + '\n')
+                            txt_file.write('Dist plane: '+str(intersect_dist) + '\n')
+                            txt_file.write('XYZ velocity:\n' + str(xyz_vel) + '\n')
+                            txt_file.write('Plane intersect:\n' + str(stream_plane_intersect) + '\n')
+                            txt_file.write('\n')
+                        else:
+                            print s_obj
+                            print 'Dist veloc: ', vel_dist
+                            print 'Dist plane: ', intersect_dist
+                            # print galah_tgas_sub['J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z']
+                            print 'XYZ velocity:\n', xyz_vel
+                            print 'Plane intersect:\n', stream_plane_intersect
+                            print ''
+if save_results:
+    txt_file.close()
