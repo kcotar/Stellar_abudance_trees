@@ -2,6 +2,8 @@ import numpy as np
 
 from ete3 import Tree, TreeStyle, NodeStyle, CircleFace, faces
 from colour import Color
+from NJ_tree_analysis_functions import *
+
 
 
 def mark_objects(tree, targets, path='tree.png'):
@@ -73,7 +75,7 @@ def colorize_tree(tree, dataset, feature, path='tree.png'):
     tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
 
 
-def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png'):
+def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png', leaves_only=False):
     # create a copy of three that will be modified later on
     tree_copy = tree.copy('newick')
     # define tree plot style
@@ -91,6 +93,9 @@ def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png'):
     colour_data_range = colour_data_min + np.arange(0, n_steps) * (colour_data_max - colour_data_min) / n_steps
     # traverse the tree and colorize the tree branches along traversing
     for branch in tree_copy.traverse():
+        if leaves_only:
+            if not branch.is_leaf():
+                continue
         leaves = np.int64(branch.get_leaf_names())
         idx_leaves = np.in1d(dataset['sobject_id'], leaves, assume_unique=True, invert=False)
         if np.sum(idx_leaves) == 0:

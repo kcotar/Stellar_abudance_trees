@@ -28,13 +28,13 @@ from ete3 import Tree
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
 
-join_repeated_obs = True
+join_repeated_obs = False
 normalize_abund = True
 weights_abund = False
 plot_overall_graphs = False
 perform_data_analysis = True
-investigate_repeated = True
-save_results = True
+investigate_repeated = False
+save_results = False
 suffix = ''
 
 # ------------------------------------------------------------------
@@ -49,7 +49,7 @@ print 'Reading data'
 # galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
 galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
 galah_cannon['galah_id'].name = 'galah_id_old'  # rename old reduction parameters
-galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.csv')['sobject_id', 'galah_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess', 'snr_c1_iraf', 'snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess']
+galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.fits')['sobject_id', 'galah_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess', 'snr_c1_iraf', 'snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess']
 galah_tsne_class = Table.read(galah_data_dir+'tsne_class_1_0.csv')
 galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
 galah_flats = Table.read(galah_data_dir+'flat_objects.csv')
@@ -99,6 +99,7 @@ galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c1_iraf', value=20
 galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class, identifier='sobject_id')
 
 # filter out flat target/object
+# galah_filter_ok._merge_ok(np.logical_not(np.bitwise_and(galah_cannon['red_flags'], 64) == 64))
 galah_filter_ok.filter_objects(galah_cannon, galah_flats, identifier='sobject_id')
 
 # ------------------------------------------------------------------------
@@ -264,19 +265,20 @@ else:
 
 if plot_overall_graphs:
     print 'Plotting graphs'
-    for cluster in np.unique(stars_cluster_data['cluster_name']):
-        print cluster
-        cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-        mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
-    for abund in abund_cols:
-        colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
-        colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
+    # for cluster in np.unique(stars_cluster_data['cluster_name']):
+    #     print cluster
+    #     cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
+    #     mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
+    colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
+    # for abund in abund_cols:
+    #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
+    #     colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
 
 
 # ------------------------------------------------------------------
@@ -296,6 +298,7 @@ galah_tgas = join(galah_cannon_subset, actions_data, keys='sobject_id', join_typ
 # determine distances between pairs of repeated observations of the same object
 if investigate_repeated:
     print 'Repeated obs graph distances'
+    snr_cols = list(['snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess'])
     topology_dist = list([])
     if save_results:
         txt_file = open('repeted_obs_dist.txt', 'w')
@@ -308,7 +311,10 @@ if investigate_repeated:
                 dist = 0
             else:
                 dist = tree_struct.get_distance(str(s_ids_comp[0]), str(s_ids_comp[1]), topology_only=True)
-            out_str += ' '+str(int(dist))
+                snr_0 = galah_tgas[galah_tgas['sobject_id'] == s_ids_comp[0]][snr_cols].to_pandas().values[0]
+                snr_1 = galah_tgas[galah_tgas['sobject_id'] == s_ids_comp[1]][snr_cols].to_pandas().values[0]
+                snr_diff = np.abs(snr_0 - snr_1)
+            out_str += ' '+str(int(dist))+' (snr dif:'+str(snr_diff)+')'
             topology_dist.append(dist)
         if save_results:
             txt_file.write(out_str+'\n')
@@ -316,7 +322,7 @@ if investigate_repeated:
             print out_str
     # mean topology distance of all repeated observations - aka quality of the tree
     mean_topology_dist = np.mean(topology_dist)
-    n_neighbours = np.sum(topology_dist == 1)
+    n_neighbours = np.sum(np.array(topology_dist) == 1)
     if save_results:
         txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
         txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
@@ -336,8 +342,8 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             s_obj_names = get_decendat_sobjects(t_node)
             galah_tgas_sub = get_data_subset(galah_tgas, s_obj_names, select_by='sobject_id')
-            stream_xyz_vel, star_angles, star_intersects, star_xyz_pos, star_xyz_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
-            if evaluate_angles(star_angles) > 80 and evaluate_pairwise_distances(star_xyz_vel, median=True) < 20:
+            xyz_gal_pos, rpz_gal_pos, uvw_gal_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
+            if evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh') < 20:
                 if galah_tgas_sub[0]['galah_id'] == galah_tgas_sub[1]['galah_id']:
                     out_text_line = '--------    Repeated obs:    ---------\nsobject_ids: ' + ' '.join(s_obj_names) + '\n'
                     if save_results:
@@ -354,37 +360,38 @@ for t_node in tree_struct.traverse():
                         print out_text_line
                 if save_results:
                     txt_file.write('sobject_ids: '+' '.join(s_obj_names) + '\n')
-                    txt_file.write('XYZ velocity:\n' + str(star_xyz_vel) + '\n')
-                    txt_file.write('Plane angles:\n' + str(star_angles) + '\n')
-                    txt_file.write('Plane intersect:\n' + str(star_intersects) + '\n')
+                    txt_file.write('XYZ pos:\n' + str(xyz_gal_pos) + '\n')
+                    txt_file.write('RPZ pos:\n' + str(rpz_gal_pos) + '\n')
+                    txt_file.write('UVW vel:\n' + str(uvw_gal_vel) + '\n')
                     txt_file.write('\n')
                 else:
                     print s_obj_names
-                    print stream_xyz_vel
-                    print star_xyz_vel
-                    print star_angles
-                    print star_intersects
+                    print xyz_gal_pos
+                    print rpz_gal_pos
+                    print uvw_gal_vel
+                    print 'Space dist ', evaluate_pairwise_distances(xyz_gal_pos, median=True, meassure='eucl')
+                    print 'Veloc dist ', evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh')
                     print
                 # repeat the same analysis from ancestors point of view
                 for ancestor_node in t_node.get_ancestors()[0:1]:  # for now investigate only from the first ancestor
                     s_obj_names = get_decendat_sobjects(ancestor_node)
                     galah_tgas_sub = get_data_subset(galah_tgas, s_obj_names, select_by='sobject_id')
-                    stream_xyz_vel, star_angles, star_intersects, star_xyz_pos, star_xyz_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
+                    xyz_gal_pos, rpz_gal_pos, uvw_gal_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
                     # if evaluate_angles(star_angles) > 75 and evaluate_pairwise_distances(star_xyz_vel, median=True) < 20:
                     if save_results:
-                        txt_file.write('-- >Second step, from ancestors point of view\n')
                         txt_file.write('sobject_ids: ' + ' '.join(s_obj_names) + '\n')
-                        txt_file.write('XYZ velocity:\n' + str(star_xyz_vel) + '\n')
-                        txt_file.write('Plane angles:\n' + str(star_angles) + '\n')
-                        txt_file.write('Plane intersect:\n' + str(star_intersects) + '\n')
+                        txt_file.write('XYZ pos:\n' + str(xyz_gal_pos) + '\n')
+                        txt_file.write('RPZ pos:\n' + str(rpz_gal_pos) + '\n')
+                        txt_file.write('UVW vel:\n' + str(uvw_gal_vel) + '\n')
                         txt_file.write('\n')
                     else:
                         print '-- >Second step, from ancestors point of view'
                         print s_obj_names
-                        print stream_xyz_vel
-                        print star_xyz_vel
-                        print star_angles
-                        print star_intersects
+                        print xyz_gal_pos
+                        print rpz_gal_pos
+                        print uvw_gal_vel
+                        print 'Space dist ', evaluate_pairwise_distances(xyz_gal_pos, median=True, meassure='eucl')
+                        print 'Veloc dist ', evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh')
                         print
 
                     # if len(node_desc) == 2:  # get final branches

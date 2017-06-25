@@ -2,8 +2,9 @@ import imp
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
+import gala.coordinates as gal_coord
 
-from sklearn.metrics.pairwise import manhattan_distances
+from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
@@ -52,9 +53,12 @@ def get_data_subset(data, ids, select_by='sobject_id'):
     return data[idx_galah_tgas]
 
 
-def evaluate_pairwise_distances(intersect, median=True):
+def evaluate_pairwise_distances(intersect, median=True, meassure = 'manh'):
     # compute all possible distances between stellar vectors that
-    intersect_dist = manhattan_distances(intersect)
+    if meassure is 'manh':
+        intersect_dist = manhattan_distances(intersect)
+    elif meassure is 'eucl':
+        intersect_dist = euclidean_distances(intersect)
     idx_uniq_dist = np.tril_indices_from(intersect_dist, k=-1)
     if median:
         return np.median(intersect_dist[idx_uniq_dist])
@@ -66,21 +70,30 @@ def evaluate_angles(angles):
     return np.median(angles)
 
 
-def predict_stream_description(data, xyz_out=False, stream_pred=None):
-    xyz_pos = coord.SkyCoord(ra=data['ra_gaia'] * un.deg,
-                             dec=data['dec_gaia'] * un.deg,
-                             distance=1e3 / data['parallax'] * un.pc).cartesian
-    xyz_vel = motion_to_cartesic(data['ra_gaia'], data['dec_gaia'],
-                                 data['pmra'], data['pmdec'],
-                                 data['rv_guess'], plx=data['parallax']).T
-    if stream_pred is None:
+def predict_stream_description(data, xyz_out=False, vel_pred=None):
+
+    stars_coord = coord.SkyCoord(ra=data['ra_gaia'] * un.deg,
+                                 dec=data['dec_gaia'] * un.deg,
+                                 distance=1e3 / data['parallax'] * un.pc)
+    xyz_gal = stars_coord.transform_to(coord.Galactocentric)
+    xyz_gal_pos = np.array(np.vstack((xyz_gal.x, xyz_gal.y, xyz_gal.z)).T)
+    # convert to cylindrical representation
+    xyz_gal.representation = 'cylindrical'
+    rpz_gal_pos = np.array(np.vstack((xyz_gal.rho, xyz_gal.phi, xyz_gal.z)).T)
+    pm_stack = np.vstack((data['pmra']._data, data['pmdec']._data))*un.mas/un.yr
+    uvw_gal_vel = gal_coord.vhel_to_gal(stars_coord, pm=pm_stack, rv=data['rv_guess']._data*un.km/un.s).T
+
+    if vel_pred is None:
         # determine stream direction as mean velocity vector
-        stream_pred = mean_velocity(xyz_vel)
-    # calculate points of intersection between plane perpendicular to mean of stellar velocity vectors
-    stream_plane_intersects = stream_plane_vector_intersect(xyz_pos, xyz_vel, stream_pred)
-    stream_plane_angles = stream_plane_vector_angle(xyz_vel, stream_pred)
-    # return computed values
-    if xyz_out:
-        return stream_pred, stream_plane_angles, stream_plane_intersects, xyz_pos, xyz_vel
-    else:
-        return stream_pred, stream_plane_angles, stream_plane_intersects
+        vel_pred = np.median(uvw_gal_vel, axis=0)
+
+    return xyz_gal_pos, rpz_gal_pos, uvw_gal_vel
+
+    # # calculate points of intersection between plane perpendicular to mean of stellar velocity vectors
+    # stream_plane_intersects = stream_plane_vector_intersect(xyz_pos, xyz_vel, stream_pred)
+    # stream_plane_angles = stream_plane_vector_angle(xyz_vel, stream_pred)
+    # # return computed values
+    # if xyz_out:
+    #     return stream_pred, stream_plane_angles, stream_plane_intersects, xyz_pos, xyz_vel
+    # else:
+    #     return stream_pred, stream_plane_angles, stream_plane_intersects
