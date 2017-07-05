@@ -1,15 +1,30 @@
-import imp
+import os, imp
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
 import gala.coordinates as gal_coord
 
 from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
+from ete3 import Tree
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
 imp.load_source('vectorcalc', '../Aquarius_membership/vector_plane_calculations.py')
 from vectorcalc import *
+
+
+def get_tree_from_file(output_nwm_file):
+    if os.path.isfile(output_nwm_file):
+        txt = open(output_nwm_file, 'r')
+        file_str = ''
+        for line in txt:
+            file_str += line[:-1]
+        tree_struct = Tree(file_str)
+        txt.close()
+        return tree_struct
+    else:
+        print 'ERROR: check megacc as it did not produce the following file ' + output_nwm_file
+        raise SystemExit
 
 
 def objects_in_list(objects, o_list):

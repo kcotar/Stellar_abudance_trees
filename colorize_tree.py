@@ -6,7 +6,7 @@ from NJ_tree_analysis_functions import *
 
 
 
-def mark_objects(tree, targets, path='tree.png'):
+def mark_objects(tree, targets, path='tree.png', min_mark=1):
     # create a copy of three that will be modified later on
     tree_copy = tree.copy('newick')
     # define tree plot style
@@ -29,9 +29,12 @@ def mark_objects(tree, targets, path='tree.png'):
                 branch.add_face(b_facet, 0, position='branch-right')
                 n_marks += 1
         branch.set_style(b_style)
-    if n_marks > 0:
+    if n_marks >= min_mark:
         print '  marked: '+str(n_marks)
-        tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
+        if path is None:
+            tree.show(tree_style=tree_plot)
+        else:
+            tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
 
 
 def colorize_tree(tree, dataset, feature, path='tree.png'):
@@ -72,7 +75,10 @@ def colorize_tree(tree, dataset, feature, path='tree.png'):
             b_style = NodeStyle()
             b_style['size'] = 0
             branch.set_style(b_style)
-    tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
+    if path is None:
+        tree.show(tree_style=tree_plot)
+    else:
+        tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
 
 
 def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png', leaves_only=False):
@@ -111,4 +117,7 @@ def colorize_tree_branches(tree, dataset, feature, path='tree_branches.png', lea
         b_style['vt_line_color'] = colour_string
         b_style['vt_line_width'] = 40
         branch.set_style(b_style)
-    tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)
+    if path is None:
+        tree.show(tree_style=tree_plot)
+    else:
+        tree_copy.render(path, h=8000, w=8000, units='px', tree_style=tree_plot)

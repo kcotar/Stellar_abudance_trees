@@ -31,8 +31,8 @@ from ete3 import Tree
 join_repeated_obs = False
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = False
-perform_data_analysis = True
+plot_overall_graphs = True
+perform_data_analysis = False
 investigate_repeated = False
 save_results = False
 suffix = ''
@@ -151,6 +151,7 @@ if join_repeated_obs:
 # -------------------- Final filtering and data preparation --------
 # ------------------------------------------------------------------
 
+galah_cannon_subset = galah_cannon_subset[:25]
 # subset to numpy array of abundance values
 galah_cannon_subset_abund = galah_cannon_subset[abund_cols_use].to_pandas().values
 # standardize (mean=0, std=1) individual abundace column
@@ -185,7 +186,8 @@ elif use_megacc:
     suffix += '_megacc'
 # distance computation
 suffix += '_manhattan'
-move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
+# move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
+move_to_dir('NJ_tree_test')
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -253,28 +255,20 @@ if not os.path.isfile(output_nwm_file):
         # print(nj_tree.ascii_art())
 
 # read output tree file
-if os.path.isfile(output_nwm_file):
-    txt = open(output_nwm_file, 'r')
-    file_str = ''
-    for line in txt:
-        file_str += line[:-1]
-    tree_struct = Tree(file_str)
-    txt.close()
-else:
-    print 'ERROR: check megacc as it did not produce the following file '+output_nwm_file
+tree_struct = get_tree_from_file(output_nwm_file)
 
 if plot_overall_graphs:
     print 'Plotting graphs'
-    # for cluster in np.unique(stars_cluster_data['cluster_name']):
-    #     print cluster
-    #     cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-    #     mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+    for cluster in np.unique(stars_cluster_data['cluster_name']):
+        print cluster
+        cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
+        mark_objects(tree_struct, cluster_targets, path=None)#path='cluster_'+cluster+'.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
     # colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
     # colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
     # colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
     # for abund in abund_cols:
     #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
