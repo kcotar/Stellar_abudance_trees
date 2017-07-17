@@ -31,8 +31,8 @@ from ete3 import Tree
 join_repeated_obs = False
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = True
-perform_data_analysis = False
+plot_overall_graphs = False
+perform_data_analysis = True
 investigate_repeated = False
 save_results = False
 suffix = ''
@@ -187,7 +187,7 @@ elif use_megacc:
 # distance computation
 suffix += '_manhattan'
 # move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
-move_to_dir('NJ_tree_test')
+move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan')
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -325,8 +325,26 @@ if investigate_repeated:
         print mean_topology_dist
         print n_neighbours, 100.*n_neighbours/len(topology_dist)
 
+print 'Traversing tree leaves'
+i_t = 0
+for t_node in tree_struct.traverse():
+    i_t += 1
+    if i_t < 500:
+        continue
+    if t_node.name == '':
+        descendants = get_decendat_sobjects(t_node)
+        n_descendants = len(descendants)
+        if n_descendants < 25 and n_descendants > 20:
+            out_path = '/home/klemen/'
+            out_file = out_path + 'tree_temp.txt'
+            txt = open(out_file, 'w')
+            txt.write(','.join(descendants))
+            txt.close()
+            exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
+            os.system(exec_str)
 
-# raise SystemExit
+
+raise SystemExit
 # start traversing the tree
 print 'Traversing tree leaves'
 if save_results:
