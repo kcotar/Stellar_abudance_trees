@@ -18,12 +18,15 @@ def get_tree_from_file(output_nwm_file):
         txt = open(output_nwm_file, 'r')
         file_str = ''
         for line in txt:
-            file_str += line[:-1]
+            if line[-1] == ';':
+                file_str += line
+            else:
+                file_str += line[:-1]
         tree_struct = Tree(file_str)
         txt.close()
         return tree_struct
     else:
-        print 'ERROR: check megacc as it did not produce the following file ' + output_nwm_file
+        print 'ERROR: check selected algorithm as it did not produce the following file ' + output_nwm_file
         raise SystemExit
 
 

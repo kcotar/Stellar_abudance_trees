@@ -6,6 +6,8 @@ import astropy.units as un
 import astropy.coordinates as coord
 
 from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
+from sklearn.preprocessing import StandardScaler, scale
+from scipy.cluster.hierarchy import linkage, to_tree
 from skbio import DistanceMatrix
 from skbio.tree import nj
 from astropy.table import Table, join
@@ -24,13 +26,41 @@ from NJ_tree_analysis_functions import *
 
 from ete3 import Tree
 
+
+# ------------------------------------------------------------------
+# -------------------- Functions -----------------------------------
+# ------------------------------------------------------------------
+def start_gui_explorer(objs):
+    out_path = '/home/klemen/'
+    out_file = out_path + 'tree_temp.txt'
+    txt = open(out_file, 'w')
+    txt.write(','.join(objs))
+    txt.close()
+    exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
+    os.system(exec_str)
+
+
+# https://stackoverflow.com/questions/28222179/save-dendrogram-to-newick-format
+def getNewick(node, newick, parentdist, leaf_names):
+    if node.is_leaf():
+        return "%s:%.8f%s" % (leaf_names[node.id], parentdist - node.dist, newick)
+    else:
+        if len(newick) > 0:
+            newick = "):%.8f%s" % (parentdist - node.dist, newick)
+        else:
+            newick = ");"
+        newick = getNewick(node.get_left(), newick, node.dist, leaf_names)
+        newick = getNewick(node.get_right(), ",%s" % (newick), node.dist, leaf_names)
+        newick = "(%s" % (newick)
+        return newick
+
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
 
-join_repeated_obs = False
+join_repeated_obs = True
 normalize_abund = True
-weights_abund = False
+weights_abund = True
 plot_overall_graphs = False
 perform_data_analysis = True
 investigate_repeated = False
@@ -151,7 +181,7 @@ if join_repeated_obs:
 # -------------------- Final filtering and data preparation --------
 # ------------------------------------------------------------------
 
-galah_cannon_subset = galah_cannon_subset[:25]
+# galah_cannon_subset = galah_cannon_subset[:5]
 # subset to numpy array of abundance values
 galah_cannon_subset_abund = galah_cannon_subset[abund_cols_use].to_pandas().values
 # standardize (mean=0, std=1) individual abundace column
@@ -177,6 +207,7 @@ print 'Input filtered data lines: '+str(len(galah_cannon_subset))
 # dec_center = 24.
 use_megacc = True
 phylip_shape = False
+hierachical_scipy = False
 
 if phylip_shape:
     output_nwm_file = 'outtree'
@@ -184,10 +215,16 @@ if phylip_shape:
 elif use_megacc:
     output_nwm_file = 'distances_network.nwk'
     suffix += '_megacc'
-# distance computation
-suffix += '_manhattan'
-# move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
-move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan')
+    # distance computation
+    suffix += '_manhattan'
+elif hierachical_scipy:
+    output_nwm_file = 'distances_network.nwk'
+    suffix += '_hier'
+    # distance computation
+    suffix += '_ward'
+
+move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
+# move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan')
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -243,6 +280,14 @@ if not os.path.isfile(output_nwm_file):
         txt.close()
         print 'Running megacc software'
         os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
+    elif hierachical_scipy:
+        print 'Hierarchical clustering started'
+        linkage_matrix = linkage(galah_cannon_subset_abund, 'ward')
+        linkage_tree = to_tree(linkage_matrix, False)
+        newic_tree_str = getNewick(linkage_tree, "", linkage_tree.dist, galah_cannon_subset['sobject_id'].data)
+        nwm_txt = open(output_nwm_file, 'w')
+        nwm_txt.write(newic_tree_str)
+        nwm_txt.close()
     else:
         # alternative way to build the tree, much slower option
         print 'Initialize distance matrix object'
@@ -262,17 +307,17 @@ if plot_overall_graphs:
     for cluster in np.unique(stars_cluster_data['cluster_name']):
         print cluster
         cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-        mark_objects(tree_struct, cluster_targets, path=None)#path='cluster_'+cluster+'.png')
-    # colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
-    # colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
-    # colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
-    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
-    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
-    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
-    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
-    # for abund in abund_cols:
-    #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
-    #     colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
+        mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+    colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
+    colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
+    colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
+    colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
+    colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
+    colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
+    colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
+    for abund in abund_cols:
+        colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
+        colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
 
 
 # ------------------------------------------------------------------
@@ -325,28 +370,55 @@ if investigate_repeated:
         print mean_topology_dist
         print n_neighbours, 100.*n_neighbours/len(topology_dist)
 
-print 'Traversing tree leaves'
+print 'Traversing tree leaves - find mayor branches splits'
+nodes_to_investigate = list([])
+for t_node in tree_struct.traverse():
+    if t_node.name == '':
+        if is_node_before_leaves(t_node, min_leaves=2):
+            # find ouh how far into the tree you can go before any mayor tree split happens
+            n_objects_up = 2
+            max_add_objects = 4
+            ancestor_nodes = t_node.get_ancestors()
+            for i_a in range(len(ancestor_nodes)):
+                ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
+                n_ancestor_obj_names = len(ancestor_obj_names)
+                if n_ancestor_obj_names >= n_objects_up + max_add_objects:
+                    if n_objects_up < 10:
+                        # skip investigation of clusters with only 2 members
+                        break
+                    print n_objects_up
+                    if i_a > 0:
+                        nodes_to_investigate.append(ancestor_nodes[i_a-1])
+                    else:
+                        nodes_to_investigate.append(t_node)
+                    break
+                else:
+                    n_objects_up = n_ancestor_obj_names
+# determine unique nodes to be investigated
+nodes_to_investigate = np.unique(nodes_to_investigate)
+print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
+for t_node in nodes_to_investigate:
+    descendants = get_decendat_sobjects(t_node)
+    start_gui_explorer(descendants)
+
+
+raise SystemExit
+print 'Traversing tree leaves - min number of objects in leaves cluster'
 i_t = 0
 for t_node in tree_struct.traverse():
     i_t += 1
-    if i_t < 500:
+    if i_t < 1500:
         continue
     if t_node.name == '':
         descendants = get_decendat_sobjects(t_node)
         n_descendants = len(descendants)
         if n_descendants < 25 and n_descendants > 20:
-            out_path = '/home/klemen/'
-            out_file = out_path + 'tree_temp.txt'
-            txt = open(out_file, 'w')
-            txt.write(','.join(descendants))
-            txt.close()
-            exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
-            os.system(exec_str)
+            start_gui_explorer(descendants)
 
 
 raise SystemExit
 # start traversing the tree
-print 'Traversing tree leaves'
+print 'Traversing tree leaves - tree final leaves only'
 if save_results:
     txt_file = open('leaves_obs.txt', 'w')
 for t_node in tree_struct.traverse():
