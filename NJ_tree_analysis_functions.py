@@ -71,7 +71,7 @@ def get_data_subset(data, ids, select_by='sobject_id'):
     return data[idx_galah_tgas]
 
 
-def evaluate_pairwise_distances(intersect, median=True, meassure = 'manh'):
+def evaluate_pairwise_distances(intersect, median=True, meassure='manh'):
     # compute all possible distances between stellar vectors that
     if meassure is 'manh':
         intersect_dist = manhattan_distances(intersect)
@@ -89,7 +89,6 @@ def evaluate_angles(angles):
 
 
 def predict_stream_description(data, xyz_out=False, vel_pred=None):
-
     stars_coord = coord.SkyCoord(ra=data['ra_gaia'] * un.deg,
                                  dec=data['dec_gaia'] * un.deg,
                                  distance=1e3 / data['parallax'] * un.pc)

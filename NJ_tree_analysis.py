@@ -30,13 +30,17 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Functions -----------------------------------
 # ------------------------------------------------------------------
-def start_gui_explorer(objs):
+def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1):
     out_path = '/home/klemen/'
     out_file = out_path + 'tree_temp.txt'
     txt = open(out_file, 'w')
     txt.write(','.join(objs))
     txt.close()
-    exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
+    if manual:
+        exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
+    else:
+        exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis_automatic.py '
+        exec_str += out_file + ' ' + save_dir+'/node_{:03d}'.format(i_seq)
     os.system(exec_str)
 
 
@@ -58,13 +62,14 @@ def getNewick(node, newick, parentdist, leaf_names):
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
 
-join_repeated_obs = True
+join_repeated_obs = False
 normalize_abund = True
-weights_abund = True
+weights_abund = False
 plot_overall_graphs = False
 perform_data_analysis = True
 investigate_repeated = False
 save_results = False
+manual_GUI_investigation = False
 suffix = ''
 
 # ------------------------------------------------------------------
@@ -74,6 +79,7 @@ suffix = ''
 galah_data_dir = '/home/klemen/GALAH_data/'
 actions_data_dir = '/home/klemen/Aquarius_membership/'
 nj_data_dir = '/home/klemen/NJ_tree_settings/'
+trees_dir = '/home/klemen/Stellar_abudance_trees/'
 # Galah parameters and abundance data
 print 'Reading data'
 # galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
@@ -121,12 +127,19 @@ galah_filter_ok.filter_valid_rows(galah_cannon, cols=abund_cols_use)
 # galah_filter_ok.filter_attribute(galah_cannon, attribute='snr2_c1_iraf', value=20, comparator='>')
 
 # filter by cannon CHI2 value
-# about 40k for 1.2 and 75k for 2.1.7
-galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=40000, comparator='<')
-galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c1_iraf', value=20, comparator='>')
+# about 35-40k for 1.2 and 75k for 2.1.7
+galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=35000, comparator='<')
+galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c1_iraf', value=15, comparator='>')
 
 # filter out problematic stars as detected by Gregor
-galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class, identifier='sobject_id')
+# determine which problematic stars might be problematic for abundance determination
+galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class[galah_tsne_class['published_reduced_class_proj1']=='binary'],
+                               identifier='sobject_id')
+galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class[galah_tsne_class['published_reduced_class_proj1']=='mol. absorption bands'],
+                               identifier='sobject_id')
+galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class[np.logical_and(galah_tsne_class['published_reduced_class_proj1']=='problematic',
+                                                                             ['emission' not in s for s in galah_tsne_class['unreduced_flag_proj1']])],
+                               identifier='sobject_id')
 
 # filter out flat target/object
 # galah_filter_ok._merge_ok(np.logical_not(np.bitwise_and(galah_cannon['red_flags'], 64) == 64))
@@ -223,8 +236,9 @@ elif hierachical_scipy:
     # distance computation
     suffix += '_ward'
 
-move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix)
-# move_to_dir('NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan')
+final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix
+# final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan'
+move_to_dir(final_dir)
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -377,13 +391,13 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
             n_objects_up = 2
-            max_add_objects = 4
+            max_add_objects = 5
             ancestor_nodes = t_node.get_ancestors()
             for i_a in range(len(ancestor_nodes)):
                 ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
                 n_ancestor_obj_names = len(ancestor_obj_names)
                 if n_ancestor_obj_names >= n_objects_up + max_add_objects:
-                    if n_objects_up < 10:
+                    if n_objects_up < 2:
                         # skip investigation of clusters with only 2 members
                         break
                     print n_objects_up
@@ -397,9 +411,10 @@ for t_node in tree_struct.traverse():
 # determine unique nodes to be investigated
 nodes_to_investigate = np.unique(nodes_to_investigate)
 print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
-for t_node in nodes_to_investigate:
-    descendants = get_decendat_sobjects(t_node)
-    start_gui_explorer(descendants)
+for i_node in range(len(nodes_to_investigate)):
+    descendants = get_decendat_sobjects(nodes_to_investigate[i_node])
+    start_gui_explorer(descendants, manual=manual_GUI_investigation,
+                       save_dir=trees_dir+final_dir, i_seq=i_node)
 
 
 raise SystemExit
