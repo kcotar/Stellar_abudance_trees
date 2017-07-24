@@ -30,18 +30,31 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Functions -----------------------------------
 # ------------------------------------------------------------------
-def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1):
-    out_path = '/home/klemen/'
-    out_file = out_path + 'tree_temp.txt'
+def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source=''):
+    code_path = '/home/klemen/tSNE_test/'
+    # temp local check to set the correct directory when not run from gigli pc
+    if not os.path.exists(code_path):
+        code_path = '/home/klemen/gigli_mount/tSNE_test/'
+    if manual:
+        manual_suffx='_manual'
+    else:
+        manual_suffx = '_auto'
+    # crete filename that is as unique as possible
+    out_file = code_path + 'tree_temp_'+str(i_seq)+manual_suffx+'_'+str(int(time.time()))+'.txt'
     txt = open(out_file, 'w')
     txt.write(','.join(objs))
     txt.close()
     if manual:
-        exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis.py ' + out_file
+        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
     else:
-        exec_str = '/home/klemen/anaconda2/bin/python /home/klemen/tSNE_test/GUI_abundance_kinematics_analysis_automatic.py '
+        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
         exec_str += out_file + ' ' + save_dir+'/node_{:03d}'.format(i_seq)
+    # add kinematics use information
+    exec_str += ' '+kinematics_source
+    # execute GUI explorer or automatic analysis
     os.system(exec_str)
+    # remove file with sobject_ids
+    os.remove(out_file)
 
 
 # https://stackoverflow.com/questions/28222179/save-dendrogram-to-newick-format
@@ -61,15 +74,26 @@ def getNewick(node, newick, parentdist, leaf_names):
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
-
+# data settings
 join_repeated_obs = False
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = False
+plot_overall_graphs = True
 perform_data_analysis = True
-investigate_repeated = False
-save_results = False
+investigate_repeated = True
+save_results = True
 manual_GUI_investigation = False
+tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when available)
+# positional filtering settings
+filter_by_sky_position = True
+ra_center = 57.  # degrees
+dec_center = 24.  # degrees
+position_radius = 25.  # degrees
+# tree generation algorithm settings
+use_megacc = False
+phylip_shape = False
+hierachical_scipy = True
+# how to name the output dir
 suffix = ''
 
 # ------------------------------------------------------------------
@@ -86,9 +110,15 @@ print 'Reading data'
 galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
 galah_cannon['galah_id'].name = 'galah_id_old'  # rename old reduction parameters
 galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.fits')['sobject_id', 'galah_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess', 'snr_c1_iraf', 'snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess']
+# reduction classification
 galah_tsne_class = Table.read(galah_data_dir+'tsne_class_1_0.csv')
-galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
 galah_flats = Table.read(galah_data_dir+'flat_objects.csv')
+# additional kinematics data
+if tgas_ucac5_use is 'tgas':
+    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_tgas_xmatch.csv')['sobject_id', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'parallax', 'parallax_error']
+elif tgas_ucac5_use is 'ucac5':
+    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_ucac5_xmatch.csv')['sobject_id', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error']
+
 # join datasets
 galah_cannon = join(galah_cannon, galah_param, keys='sobject_id', join_type='inner')
 # known stars in clusters in this dataset
@@ -159,9 +189,9 @@ if normalize_abund:
 _temp_sub = None
 # ------------------------------------------------------------------------
 
-# filter out data that are not in tgas set
-suffix += '_tgas'
-galah_filter_ok.filter_objects(galah_cannon, galah_tgas_xmatch, identifier='sobject_id', invert=False)
+# filter out data that are not in kinematics dataset
+suffix += '_'+tgas_ucac5_use
+galah_filter_ok.filter_objects(galah_cannon, galah_kinematics_xmatch, identifier='sobject_id', invert=False)
 
 # create a subset defined by filters above
 galah_cannon_subset = galah_filter_ok.apply_filter(galah_cannon)
@@ -191,6 +221,22 @@ if join_repeated_obs:
     print 'Object after joining repeated: '+str(len(galah_cannon_subset))
 
 # ------------------------------------------------------------------
+# -------------------- Positional filtering for large datasets -----
+# ------------------------------------------------------------------
+suffix_pos = ''
+if filter_by_sky_position:
+    print 'Filtering stars by their position on the sky'
+    galah_cannon_subset['ra'].unit = ''
+    galah_cannon_subset['dec'].unit = ''
+    suffix_pos += '_ra_{:.1f}_dec_{:.1f}_rad_{:.1f}'.format(ra_center, dec_center, position_radius)
+    galah_pos = coord.ICRS(ra=galah_cannon_subset['ra'] * un.deg,
+                           dec=galah_cannon_subset['dec'] * un.deg)
+    distance_to_center = galah_pos.separation(coord.ICRS(ra=ra_center * un.deg,
+                                                         dec=dec_center * un.deg))
+    idx_pos_select = distance_to_center <= position_radius*un.deg
+    galah_cannon_subset = galah_cannon_subset[idx_pos_select]
+
+# ------------------------------------------------------------------
 # -------------------- Final filtering and data preparation --------
 # ------------------------------------------------------------------
 
@@ -213,15 +259,6 @@ if weights_abund:
 
 print 'Input filtered data lines: '+str(len(galah_cannon_subset))
 
-# for ra_center, dec_center in zip([],[]):
-#
-# convert ra and dec to astropy coordinates
-# ra_center = 57.
-# dec_center = 24.
-use_megacc = True
-phylip_shape = False
-hierachical_scipy = False
-
 if phylip_shape:
     output_nwm_file = 'outtree'
     suffix += '_phylip'
@@ -233,10 +270,12 @@ elif use_megacc:
 elif hierachical_scipy:
     output_nwm_file = 'distances_network.nwk'
     suffix += '_hier'
+    # method
+    suffix += '_weighted'
     # distance computation
-    suffix += '_ward'
+    suffix += '_manhattan'
 
-final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix
+final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix+suffix_pos
 # final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan'
 move_to_dir(final_dir)
 
@@ -247,14 +286,15 @@ move_to_dir(final_dir)
 # compute distances and create phylogenetic tree from distance information
 if not os.path.isfile(output_nwm_file):
     print 'Computing data distances'
-    # manhattan distance
-    distances = np.abs(manhattan_distances(galah_cannon_subset_abund))
-    print distances[:5,:5]
-    # OR any other distance computation from distances.py
-    # manhattan_distances, euclidean_distances
-    # canberra_distance, kulczynski_distance, sorensen_distance, bray_curtis_similarity, czekanovski_dice_distance
 
-    # print distances[250:265, :15]
+    if phylip_shape or use_megacc:
+        # distances might use too much RAM, especially for more complex matrix distance computations
+        distances = np.abs(manhattan_distances(galah_cannon_subset_abund))
+        print distances[:5, :5]  # just a quick sanity check
+        # OR any other distance computation from distances.py
+        # manhattan_distances, euclidean_distances
+        # canberra_distance, kulczynski_distance, sorensen_distance, bray_curtis_similarity, czekanovski_dice_distance
+
     if phylip_shape:
         # export distances to be used by megacc procedure
         txt = open('dist_phylip.txt', 'w')
@@ -296,7 +336,7 @@ if not os.path.isfile(output_nwm_file):
         os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
     elif hierachical_scipy:
         print 'Hierarchical clustering started'
-        linkage_matrix = linkage(galah_cannon_subset_abund, 'ward')
+        linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric='cityblock')  # might use too much RAM
         linkage_tree = to_tree(linkage_matrix, False)
         newic_tree_str = getNewick(linkage_tree, "", linkage_tree.dist, galah_cannon_subset['sobject_id'].data)
         nwm_txt = open(output_nwm_file, 'w')
@@ -322,16 +362,16 @@ if plot_overall_graphs:
         print cluster
         cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
         mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
-    colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
+    # colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg_branches.png')
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
-    for abund in abund_cols:
-        colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
-        colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
+    # for abund in abund_cols:
+    #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
+    #     colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
 
 
 # ------------------------------------------------------------------
@@ -340,14 +380,6 @@ if plot_overall_graphs:
 if not perform_data_analysis:
     raise SystemExit
 
-
-# join datasets
-actions_data = Table.read(galah_data_dir+'galah_tgas_xmatch_actions.fits')['sobject_id', 'J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z', 'Theta_R', 'Theta_Phi', 'Theta_Z',
-                                                                                     'ra_gaia', 'dec_gaia', 'parallax', 'pmra', 'pmdec']
-# actions_data = actions_data[np.isfinite(actions_data['J_R'])].filled()
-galah_tgas = join(galah_cannon_subset, actions_data, keys='sobject_id', join_type='inner')
-
-
 # determine distances between pairs of repeated observations of the same object
 if investigate_repeated:
     print 'Repeated obs graph distances'
@@ -355,19 +387,19 @@ if investigate_repeated:
     topology_dist = list([])
     if save_results:
         txt_file = open('repeted_obs_dist.txt', 'w')
-    id_uniq, id_count = np.unique(galah_tgas['galah_id'], return_counts=True)
+    id_uniq, id_count = np.unique(galah_cannon_subset['galah_id'], return_counts=True)
     for galah_id in id_uniq[id_count >= 2]:
-        s_ids_repeated = galah_tgas['sobject_id'][galah_tgas['galah_id'] == galah_id]._data
+        s_ids_repeated = galah_cannon_subset['sobject_id'][galah_cannon_subset['galah_id'] == galah_id]._data
         out_str = str(galah_id)+':'
         for s_ids_comp in itertools.combinations(s_ids_repeated, 2):
             if s_ids_comp[0] == s_ids_comp[1]:
                 dist = 0
             else:
                 dist = tree_struct.get_distance(str(s_ids_comp[0]), str(s_ids_comp[1]), topology_only=True)
-                snr_0 = galah_tgas[galah_tgas['sobject_id'] == s_ids_comp[0]][snr_cols].to_pandas().values[0]
-                snr_1 = galah_tgas[galah_tgas['sobject_id'] == s_ids_comp[1]][snr_cols].to_pandas().values[0]
+                snr_0 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[0]][snr_cols].to_pandas().values[0]
+                snr_1 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[1]][snr_cols].to_pandas().values[0]
                 snr_diff = np.abs(snr_0 - snr_1)
-            out_str += ' '+str(int(dist))+' (snr dif:'+str(snr_diff)+')'
+                out_str += ' '+str(int(dist))+' (snr dif:'+str(snr_diff)+')'
             topology_dist.append(dist)
         if save_results:
             txt_file.write(out_str+'\n')
@@ -376,13 +408,16 @@ if investigate_repeated:
     # mean topology distance of all repeated observations - aka quality of the tree
     mean_topology_dist = np.mean(topology_dist)
     n_neighbours = np.sum(np.array(topology_dist) == 1)
-    if save_results:
-        txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
-        txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
-        txt_file.close()
+    if len(topology_dist) > 0:
+        if save_results:
+            txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
+            txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
+            txt_file.close()
+        else:
+            print mean_topology_dist
+            print n_neighbours, 100.*n_neighbours/len(topology_dist)
     else:
-        print mean_topology_dist
-        print n_neighbours, 100.*n_neighbours/len(topology_dist)
+        print 'NOTE: No repeated observations found in the dataset'
 
 print 'Traversing tree leaves - find mayor branches splits'
 nodes_to_investigate = list([])
@@ -414,7 +449,7 @@ print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
 for i_node in range(len(nodes_to_investigate)):
     descendants = get_decendat_sobjects(nodes_to_investigate[i_node])
     start_gui_explorer(descendants, manual=manual_GUI_investigation,
-                       save_dir=trees_dir+final_dir, i_seq=i_node)
+                       save_dir=trees_dir+final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
 
 
 raise SystemExit
@@ -428,12 +463,20 @@ for t_node in tree_struct.traverse():
         descendants = get_decendat_sobjects(t_node)
         n_descendants = len(descendants)
         if n_descendants < 25 and n_descendants > 20:
-            start_gui_explorer(descendants)
+            start_gui_explorer(descendants, manual=manual_GUI_investigation,
+                               save_dir=trees_dir + final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
 
 
 raise SystemExit
 # start traversing the tree
 print 'Traversing tree leaves - tree final leaves only'
+
+# join datasets
+actions_data = Table.read(galah_data_dir+'galah_tgas_xmatch_actions.fits')['sobject_id', 'J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z', 'Theta_R', 'Theta_Phi', 'Theta_Z',
+                                                                                     'ra_gaia', 'dec_gaia', 'parallax', 'pmra', 'pmdec']
+# actions_data = actions_data[np.isfinite(actions_data['J_R'])].filled()
+galah_tgas = join(galah_cannon_subset, actions_data, keys='sobject_id', join_type='inner')
+
 if save_results:
     txt_file = open('leaves_obs.txt', 'w')
 for t_node in tree_struct.traverse():
