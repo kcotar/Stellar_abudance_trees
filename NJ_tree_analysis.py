@@ -30,65 +30,28 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Functions -----------------------------------
 # ------------------------------------------------------------------
-def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source=''):
-    code_path = '/home/klemen/tSNE_test/'
-    # temp local check to set the correct directory when not run from gigli pc
-    if not os.path.exists(code_path):
-        code_path = '/home/klemen/gigli_mount/tSNE_test/'
-    if manual:
-        manual_suffx='_manual'
-    else:
-        manual_suffx = '_auto'
-    # crete filename that is as unique as possible
-    out_file = code_path + 'tree_temp_'+str(i_seq)+manual_suffx+'_'+str(int(time.time()))+'.txt'
-    txt = open(out_file, 'w')
-    txt.write(','.join(objs))
-    txt.close()
-    if manual:
-        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
-    else:
-        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
-        exec_str += out_file + ' ' + save_dir+'/node_{:03d}'.format(i_seq)
-    # add kinematics use information
-    exec_str += ' '+kinematics_source
-    # execute GUI explorer or automatic analysis
-    os.system(exec_str)
-    # remove file with sobject_ids
-    os.remove(out_file)
-
-
-# https://stackoverflow.com/questions/28222179/save-dendrogram-to-newick-format
-def getNewick(node, newick, parentdist, leaf_names):
-    if node.is_leaf():
-        return "%s:%.8f%s" % (leaf_names[node.id], parentdist - node.dist, newick)
-    else:
-        if len(newick) > 0:
-            newick = "):%.8f%s" % (parentdist - node.dist, newick)
-        else:
-            newick = ");"
-        newick = getNewick(node.get_left(), newick, node.dist, leaf_names)
-        newick = getNewick(node.get_right(), ",%s" % (newick), node.dist, leaf_names)
-        newick = "(%s" % (newick)
-        return newick
+# relocated for general use to the NJ_tree_analysis_functions.py
 
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
 # data settings
-join_repeated_obs = False
+join_repeated_obs = True
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = True
+plot_overall_graphs = False
 perform_data_analysis = True
 investigate_repeated = True
 save_results = True
 manual_GUI_investigation = False
 tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when available)
+
 # positional filtering settings
 filter_by_sky_position = True
-ra_center = 57.  # degrees
-dec_center = 24.  # degrees
-position_radius = 25.  # degrees
+ra_center = 315.  # degrees
+dec_center = -40.  # degrees
+position_radius = 35.  # degrees
+
 # tree generation algorithm settings
 use_megacc = False
 phylip_shape = False
@@ -426,7 +389,7 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
             n_objects_up = 2
-            max_add_objects = 5
+            max_add_objects = 6
             ancestor_nodes = t_node.get_ancestors()
             for i_a in range(len(ancestor_nodes)):
                 ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
@@ -443,8 +406,19 @@ for t_node in tree_struct.traverse():
                     break
                 else:
                     n_objects_up = n_ancestor_obj_names
+
 # determine unique nodes to be investigated
-nodes_to_investigate = np.unique(nodes_to_investigate)
+# nodes_to_investigate = np.unique(nodes_to_investigate)
+
+# much more consistent way of producing repeatable list of nodes to visited
+print 'Removing repeated nodes from the list'
+for node_cur in nodes_to_investigate:
+    idx_nodes = np.where(np.in1d(nodes_to_investigate, node_cur))[0]
+    n_rep = len(idx_nodes)
+    if n_rep > 1:
+        for i_pop in range(n_rep-1):
+            nodes_to_investigate.remove(node_cur)
+
 print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
 for i_node in range(len(nodes_to_investigate)):
     descendants = get_decendat_sobjects(nodes_to_investigate[i_node])
@@ -465,7 +439,6 @@ for t_node in tree_struct.traverse():
         if n_descendants < 25 and n_descendants > 20:
             start_gui_explorer(descendants, manual=manual_GUI_investigation,
                                save_dir=trees_dir + final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
-
 
 raise SystemExit
 # start traversing the tree

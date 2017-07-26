@@ -1,4 +1,4 @@
-import os, imp
+import os, imp, time
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
@@ -114,3 +114,45 @@ def predict_stream_description(data, xyz_out=False, vel_pred=None):
     #     return stream_pred, stream_plane_angles, stream_plane_intersects, xyz_pos, xyz_vel
     # else:
     #     return stream_pred, stream_plane_angles, stream_plane_intersects
+
+
+def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source=''):
+    code_path = '/home/klemen/tSNE_test/'
+    # temp local check to set the correct directory when not run from gigli pc
+    if not os.path.exists(code_path):
+        code_path = '/home/klemen/gigli_mount/tSNE_test/'
+    if manual:
+        manual_suffx='_manual'
+    else:
+        manual_suffx = '_auto'
+    # crete filename that is as unique as possible
+    out_file = code_path + 'tree_temp_'+str(i_seq)+manual_suffx+'_'+str(int(time.time()))+'.txt'
+    txt = open(out_file, 'w')
+    txt.write(','.join(objs))
+    txt.close()
+    if manual:
+        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
+    else:
+        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
+        exec_str += out_file + ' ' + save_dir+'/node_{:04d}'.format(i_seq)
+    # add kinematics use information
+    exec_str += ' '+kinematics_source
+    # execute GUI explorer or automatic analysis
+    os.system(exec_str)
+    # remove file with sobject_ids
+    os.remove(out_file)
+
+
+# https://stackoverflow.com/questions/28222179/save-dendrogram-to-newick-format
+def getNewick(node, newick, parentdist, leaf_names):
+    if node.is_leaf():
+        return "%s:%.8f%s" % (leaf_names[node.id], parentdist - node.dist, newick)
+    else:
+        if len(newick) > 0:
+            newick = "):%.8f%s" % (parentdist - node.dist, newick)
+        else:
+            newick = ");"
+        newick = getNewick(node.get_left(), newick, node.dist, leaf_names)
+        newick = getNewick(node.get_right(), ",%s" % (newick), node.dist, leaf_names)
+        newick = "(%s" % (newick)
+        return newick
