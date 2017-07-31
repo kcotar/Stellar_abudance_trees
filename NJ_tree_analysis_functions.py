@@ -116,7 +116,7 @@ def predict_stream_description(data, xyz_out=False, vel_pred=None):
     #     return stream_pred, stream_plane_angles, stream_plane_intersects
 
 
-def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source=''):
+def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source='', initial_only=False):
     code_path = '/home/klemen/tSNE_test/'
     # temp local check to set the correct directory when not run from gigli pc
     if not os.path.exists(code_path):
@@ -134,14 +134,23 @@ def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_sourc
         exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
     else:
         exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
-        exec_str += out_file + ' ' + save_dir+'/node_{:04d}'.format(i_seq)
+        if i_seq is not None:
+            exec_str += out_file + ' ' + save_dir+'/node_{:04d}'.format(i_seq)
+        else:
+            exec_str += out_file + ' ' + save_dir
     # add kinematics use information
     exec_str += ' '+kinematics_source
+
+    if not manual:
+        if initial_only:
+            exec_str += ' True'
+        else:
+            exec_str += ' False'
+
     # execute GUI explorer or automatic analysis
     os.system(exec_str)
     # remove file with sobject_ids
     os.remove(out_file)
-
 
 # https://stackoverflow.com/questions/28222179/save-dendrogram-to-newick-format
 def getNewick(node, newick, parentdist, leaf_names):

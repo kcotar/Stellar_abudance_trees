@@ -48,7 +48,7 @@ tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when av
 
 # positional filtering settings
 filter_by_sky_position = True
-ra_center = 315.  # degrees
+ra_center = 225.  # degrees
 dec_center = -40.  # degrees
 position_radius = 35.  # degrees
 
@@ -85,7 +85,7 @@ elif tgas_ucac5_use is 'ucac5':
 # join datasets
 galah_cannon = join(galah_cannon, galah_param, keys='sobject_id', join_type='inner')
 # known stars in clusters in this dataset
-stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
+stars_cluster_data = Table.read(galah_data_dir+'clusters/sobject_clusterstars_1.0.fits')
 clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 
 # get cannon abundance cols
@@ -182,6 +182,9 @@ if join_repeated_obs:
                 galah_cannon_subset[out_row][compute_mean_cols[i_col]] = mean_cols[i_col]
             galah_cannon_subset.remove_rows(idx_rows[0][1:])
     print 'Object after joining repeated: '+str(len(galah_cannon_subset))
+
+# remove problems with masks
+# galah_cannon_subset = galah_cannon_subset.filled()
 
 # ------------------------------------------------------------------
 # -------------------- Positional filtering for large datasets -----
@@ -348,39 +351,45 @@ if investigate_repeated:
     print 'Repeated obs graph distances'
     snr_cols = list(['snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess'])
     topology_dist = list([])
-    if save_results:
-        txt_file = open('repeted_obs_dist.txt', 'w')
+    # get repeated observations still found in the dataset
     id_uniq, id_count = np.unique(galah_cannon_subset['galah_id'], return_counts=True)
-    for galah_id in id_uniq[id_count >= 2]:
-        s_ids_repeated = galah_cannon_subset['sobject_id'][galah_cannon_subset['galah_id'] == galah_id]._data
-        out_str = str(galah_id)+':'
-        for s_ids_comp in itertools.combinations(s_ids_repeated, 2):
-            if s_ids_comp[0] == s_ids_comp[1]:
-                dist = 0
+    id_uniq = id_uniq[np.logical_and(id_uniq > 0, id_count >= 2)]
+    n_reps = len(id_uniq)
+    print ' Number of repeats found: '+str(n_reps)
+    if n_reps > 0:
+        # output results
+        if save_results:
+            txt_file = open('repeted_obs_dist.txt', 'w')
+        for galah_id in id_uniq:
+            s_ids_repeated = galah_cannon_subset['sobject_id'][galah_cannon_subset['galah_id'] == galah_id]._data
+            out_str = str(galah_id)+':'
+            for s_ids_comp in itertools.combinations(s_ids_repeated, 2):
+                if s_ids_comp[0] == s_ids_comp[1]:
+                    dist = 0
+                else:
+                    dist = tree_struct.get_distance(str(s_ids_comp[0]), str(s_ids_comp[1]), topology_only=True)
+                    snr_0 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[0]][snr_cols].to_pandas().values[0]
+                    snr_1 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[1]][snr_cols].to_pandas().values[0]
+                    snr_diff = np.abs(snr_0 - snr_1)
+                    out_str += ' '+str(int(dist))+' (snr dif:'+str(snr_diff)+')'
+                topology_dist.append(dist)
+            if save_results:
+                txt_file.write(out_str+'\n')
             else:
-                dist = tree_struct.get_distance(str(s_ids_comp[0]), str(s_ids_comp[1]), topology_only=True)
-                snr_0 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[0]][snr_cols].to_pandas().values[0]
-                snr_1 = galah_cannon_subset[galah_cannon_subset['sobject_id'] == s_ids_comp[1]][snr_cols].to_pandas().values[0]
-                snr_diff = np.abs(snr_0 - snr_1)
-                out_str += ' '+str(int(dist))+' (snr dif:'+str(snr_diff)+')'
-            topology_dist.append(dist)
-        if save_results:
-            txt_file.write(out_str+'\n')
+                print out_str
+        # mean topology distance of all repeated observations - aka quality of the tree
+        mean_topology_dist = np.mean(topology_dist)
+        n_neighbours = np.sum(np.array(topology_dist) == 1)
+        if len(topology_dist) > 0:
+            if save_results:
+                txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
+                txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
+                txt_file.close()
+            else:
+                print mean_topology_dist
+                print n_neighbours, 100.*n_neighbours/len(topology_dist)
         else:
-            print out_str
-    # mean topology distance of all repeated observations - aka quality of the tree
-    mean_topology_dist = np.mean(topology_dist)
-    n_neighbours = np.sum(np.array(topology_dist) == 1)
-    if len(topology_dist) > 0:
-        if save_results:
-            txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
-            txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
-            txt_file.close()
-        else:
-            print mean_topology_dist
-            print n_neighbours, 100.*n_neighbours/len(topology_dist)
-    else:
-        print 'NOTE: No repeated observations found in the dataset'
+            print 'NOTE: No repeated observations found in the dataset'
 
 print 'Traversing tree leaves - find mayor branches splits'
 nodes_to_investigate = list([])
@@ -389,7 +398,7 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
             n_objects_up = 2
-            max_add_objects = 6
+            max_add_objects = 8
             ancestor_nodes = t_node.get_ancestors()
             for i_a in range(len(ancestor_nodes)):
                 ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
@@ -410,7 +419,7 @@ for t_node in tree_struct.traverse():
 # determine unique nodes to be investigated
 # nodes_to_investigate = np.unique(nodes_to_investigate)
 
-# much more consistent way of producing repeatable list of nodes to visited
+# much more consistent way of producing repeatable list of nodes to be visited for analysis
 print 'Removing repeated nodes from the list'
 for node_cur in nodes_to_investigate:
     idx_nodes = np.where(np.in1d(nodes_to_investigate, node_cur))[0]
