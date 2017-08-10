@@ -1,4 +1,4 @@
-import os, imp, time
+import imp, sys
 import itertools
 
 import numpy as np
@@ -35,6 +35,9 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
+# input arguments
+input_arguments = sys.argv
+
 # data settings
 join_repeated_obs = True
 normalize_abund = True
@@ -48,9 +51,15 @@ tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when av
 
 # positional filtering settings
 filter_by_sky_position = True
-ra_center = 225.  # degrees
-dec_center = -40.  # degrees
-position_radius = 35.  # degrees
+if len(input_arguments) > 3:
+    print 'Using arguments given from command line'
+    ra_center = float(input_arguments[1])
+    dec_center = float(input_arguments[2])
+    position_radius = float(input_arguments[3])
+else:
+    ra_center = 30.  # degrees
+    dec_center = 90.  # degrees
+    position_radius = 35.  # degrees
 
 # tree generation algorithm settings
 use_megacc = False
@@ -398,7 +407,7 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
             n_objects_up = 2
-            max_add_objects = 8
+            max_add_objects = 6
             ancestor_nodes = t_node.get_ancestors()
             for i_a in range(len(ancestor_nodes)):
                 ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
@@ -407,7 +416,7 @@ for t_node in tree_struct.traverse():
                     if n_objects_up < 2:
                         # skip investigation of clusters with only 2 members
                         break
-                    print n_objects_up
+                    # print n_objects_up
                     if i_a > 0:
                         nodes_to_investigate.append(ancestor_nodes[i_a-1])
                     else:
@@ -420,13 +429,16 @@ for t_node in tree_struct.traverse():
 # nodes_to_investigate = np.unique(nodes_to_investigate)
 
 # much more consistent way of producing repeatable list of nodes to be visited for analysis
-print 'Removing repeated nodes from the list'
+print 'Removing repeated nodes from the list (starting number of nodes is '+str(len(nodes_to_investigate))+')'
+nodes_to_remove = list([])
 for node_cur in nodes_to_investigate:
     idx_nodes = np.where(np.in1d(nodes_to_investigate, node_cur))[0]
     n_rep = len(idx_nodes)
     if n_rep > 1:
-        for i_pop in range(n_rep-1):
-            nodes_to_investigate.remove(node_cur)
+        nodes_to_remove.append(idx_nodes[1:])
+nodes_to_investigate = np.delete(nodes_to_investigate, np.unique(np.hstack(nodes_to_remove)))
+
+# colorize tree structures that were/will be evaluated
 
 print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
 for i_node in range(len(nodes_to_investigate)):

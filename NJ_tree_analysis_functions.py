@@ -135,7 +135,7 @@ def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_sourc
     else:
         exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
         if i_seq is not None:
-            exec_str += out_file + ' ' + save_dir+'/node_{:04d}'.format(i_seq)
+            exec_str += out_file + ' ' + save_dir+'/node_{:05d}'.format(i_seq)
         else:
             exec_str += out_file + ' ' + save_dir
     # add kinematics use information
