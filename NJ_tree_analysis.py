@@ -438,7 +438,17 @@ for node_cur in nodes_to_investigate:
         nodes_to_remove.append(idx_nodes[1:])
 nodes_to_investigate = np.delete(nodes_to_investigate, np.unique(np.hstack(nodes_to_remove)))
 
-# colorize tree structures that were/will be evaluated
+# colorize tree structures/nodes/branches/leaves/something that were/will be evaluated, test for selection criteria
+print 'Analyzing selected nodes and leaves, plotting graph for selection'
+sobjects_analyzed_all = list([])
+# gather all unique sobject_ids
+for i_node in range(len(nodes_to_investigate)):
+    descendants = get_decendat_sobjects(nodes_to_investigate[i_node])
+    for cur_des in descendants:
+        sobjects_analyzed_all.append(cur_des)
+sobjects_analyzed_all = np.unique(np.array(sobjects_analyzed_all))
+# plot graph
+mark_objects(tree_struct, np.int64(sobjects_analyzed_all), path='analysis_selected_leaves.png')
 
 print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
 for i_node in range(len(nodes_to_investigate)):
