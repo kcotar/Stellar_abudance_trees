@@ -4,6 +4,7 @@ import itertools
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
+import matplotlib.pyplot as plt
 
 from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
 from sklearn.preprocessing import StandardScaler, scale
@@ -211,6 +212,7 @@ if filter_by_sky_position:
     idx_pos_select = distance_to_center <= position_radius*un.deg
     galah_cannon_subset = galah_cannon_subset[idx_pos_select]
 
+
 # ------------------------------------------------------------------
 # -------------------- Final filtering and data preparation --------
 # ------------------------------------------------------------------
@@ -253,6 +255,27 @@ elif hierachical_scipy:
 final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix+suffix_pos
 # final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan'
 move_to_dir(final_dir)
+
+if filter_by_sky_position:
+    # create an image of investigated sky area
+    print 'Plotting sky area'
+    grid_ra = np.linspace(0, 360, 360 * 4)
+    grid_dec = np.linspace(-90, 90, 180 * 4)
+    _dec, _ra = np.meshgrid(grid_dec, grid_ra)
+    loc_observed = coord.ICRS(ra=_ra * un.deg,
+                              dec=_dec * un.deg).separation(coord.ICRS(ra=ra_center * un.deg,
+                                                                       dec=dec_center * un.deg)) <= position_radius * un.deg
+    observed_field = np.int8(loc_observed).reshape(_dec.shape)
+    fig, ax = plt.subplots(1, 1)
+    print observed_field.shape
+    print np.sum(loc_observed)
+    print np.sum(observed_field)
+    im_ax = ax.imshow(observed_field.T, interpolation=None, cmap='seismic', origin='lower')
+    fig.colorbar(im_ax)
+    ax.set_axis_off()
+    fig.tight_layout()
+    plt.savefig('area_sky_observed.png', dpi=300)
+    plt.close()
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
