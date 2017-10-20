@@ -116,7 +116,7 @@ def predict_stream_description(data, xyz_out=False, vel_pred=None):
     #     return stream_pred, stream_plane_angles, stream_plane_intersects
 
 
-def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source='', initial_only=False):
+def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_source='', initial_only=False, loose=False):
     code_path = '/home/klemen/tSNE_test/'
     # temp local check to set the correct directory when not run from gigli pc
     if not os.path.exists(code_path):
@@ -143,6 +143,10 @@ def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_sourc
 
     if not manual:
         if initial_only:
+            exec_str += ' True'
+        else:
+            exec_str += ' False'
+        if loose:
             exec_str += ' True'
         else:
             exec_str += ' False'

@@ -12,9 +12,10 @@ from scipy.cluster.hierarchy import linkage, to_tree
 from skbio import DistanceMatrix
 from skbio.tree import nj
 from astropy.table import Table, join
+from getopt import getopt
 
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
-from helper import move_to_dir, get_abundance_cols, define_cluster_centers, determine_clusters_abundance_deviation, get_multipler
+from helper import move_to_dir, get_abundance_cols, define_cluster_centers, determine_clusters_abundance_deviation, get_multipler, string_bool
 imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
 from norm import *
 
@@ -49,14 +50,32 @@ investigate_repeated = True
 save_results = True
 manual_GUI_investigation = False
 tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when available)
+use_cannon2 = False
 
 # positional filtering settings
+linkage_metric = 'cityblock'
+loose_pairs = True
 filter_by_sky_position = True
 if len(input_arguments) > 3:
     print 'Using arguments given from command line'
     ra_center = float(input_arguments[1])
     dec_center = float(input_arguments[2])
     position_radius = float(input_arguments[3])
+    # select only input arguments including -- string
+    input_options = [arg for arg in input_arguments if '--' in arg]
+    if len(input_options) > 0:
+        opts, args = getopt(input_options, '', ['metric=', 'join=', 'loose='])
+        # set parameters, depending on user inputs
+        print input_arguments
+        print opts
+        for o, a in opts:
+            if o == '--metric':
+                linkage_metric = a
+            if o == '--join':
+                join_repeated_obs = string_bool(a)
+            if o == '--loose':
+                loose_pairs = string_bool(a)
+
 else:
     ra_center = 30.  # degrees
     dec_center = 90.  # degrees
@@ -79,8 +98,11 @@ nj_data_dir = '/home/klemen/NJ_tree_settings/'
 trees_dir = '/home/klemen/Stellar_abudance_trees/'
 # Galah parameters and abundance data
 print 'Reading data'
-# galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
-galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
+if use_cannon2:
+    galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon2.1.7.fits')
+    galah_cannon.remove_columns(['rv_guess', 'teff_guess', 'logg_guess', 'feh_guess'])
+else:
+    galah_cannon = Table.read(galah_data_dir+'sobject_iraf_cannon_1.2.fits')
 galah_cannon['galah_id'].name = 'galah_id_old'  # rename old reduction parameters
 galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.fits')['sobject_id', 'galah_id', 'rv_guess', 'teff_guess', 'logg_guess', 'feh_guess', 'snr_c1_iraf', 'snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess']
 # reduction classification
@@ -114,14 +136,16 @@ galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140
 # -------------------- Abundance data filtering --------------------
 # ------------------------------------------------------------------
 
-# use for Cannon 1.2
-# filter by cannon set flags - parameters flag, must be set to 0 for valid data
-galah_filter_ok._merge_ok(galah_cannon['flag_cannon'] == '0.0')
-
-# use for Cannon 2.1.7
-# filter by cannon set flags - abundances flags, all flags must be set to 0 for valid data
-# for abund_col in abund_cols_use:
-#     galah_filter_ok._merge_ok(galah_cannon['flag_'+abund_col] == 0)
+if use_cannon2:
+    # use for Cannon 2.1.7
+    # filter by cannon set flags - abundances flags, all flags must be set to 0 for valid data
+    galah_filter_ok._merge_ok(np.isfinite(galah_cannon[abund_cols_use].to_pandas().values).all(axis=1))
+    for abund_col in abund_cols_use:
+        galah_filter_ok._merge_ok(galah_cannon['flag_'+abund_col] == 0)
+else:
+    # use for Cannon 1.2
+    # filter by cannon set flags - parameters flag, must be set to 0 for valid data
+    galah_filter_ok._merge_ok(galah_cannon['flag_cannon'] == '0.0')
 
 # remove rows with any nan values in any of the abundance columns/attributes
 galah_filter_ok.filter_valid_rows(galah_cannon, cols=abund_cols_use)
@@ -134,7 +158,7 @@ galah_filter_ok.filter_valid_rows(galah_cannon, cols=abund_cols_use)
 galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=35000, comparator='<')
 galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c1_iraf', value=15, comparator='>')
 
-# filter out problematic stars as detected by Gregor
+# filter out classes of possibly problematic stars as detected by Gregor
 # determine which problematic stars might be problematic for abundance determination
 galah_filter_ok.filter_objects(galah_cannon, galah_tsne_class[galah_tsne_class['published_reduced_class_proj1']=='binary'],
                                identifier='sobject_id')
@@ -153,7 +177,7 @@ galah_filter_ok.filter_objects(galah_cannon, galah_flats, identifier='sobject_id
 _temp_sub = galah_filter_ok.apply_filter(galah_cannon)
 if weights_abund:
     # at this point determine cluster deviations and normalize data, TGAS filtering is performed after that
-    std_abundances = determine_clusters_abundance_deviation(_temp_sub, stars_cluster_data, abund_cols)
+    std_abundances = determine_clusters_abundance_deviation(_temp_sub, stars_cluster_data, abund_cols_use)
     print std_abundances
 if normalize_abund:
     # determine normalization parameters
@@ -177,7 +201,7 @@ if join_repeated_obs:
     # TODO export repeated observations
     print 'Merging repeated observations'
     suffix += '_norep'
-    compute_mean_cols = list(abund_cols)
+    compute_mean_cols = list(abund_cols_use)
     compute_mean_cols.append('rv_guess')
     i_rep, c_rep = np.unique(galah_cannon_subset['galah_id'], return_counts=True)
     ids_join = i_rep[np.logical_and(i_rep > 0, c_rep >= 2)]
@@ -186,7 +210,7 @@ if join_repeated_obs:
         print 'Number of repeated object: '+str(len(ids_join))+' and observations: '+str(n_reps)
         for id_join in ids_join:
             idx_rows = np.where(galah_cannon_subset['galah_id'] == id_join)
-            mean_cols = np.median(galah_cannon_subset[idx_rows][compute_mean_cols].to_pandas().values, axis=0)
+            mean_cols = np.nanmedian(galah_cannon_subset[idx_rows][compute_mean_cols].to_pandas().values, axis=0)
             out_row = idx_rows[0][0]
             for i_col in range(len(compute_mean_cols)):
                 galah_cannon_subset[out_row][compute_mean_cols[i_col]] = mean_cols[i_col]
@@ -202,6 +226,9 @@ if join_repeated_obs:
 suffix_pos = ''
 if filter_by_sky_position:
     print 'Filtering stars by their position on the sky'
+    print 'RA center:', ra_center
+    print 'DEC center:', dec_center
+    print 'Radius center:', position_radius
     galah_cannon_subset['ra'].unit = ''
     galah_cannon_subset['dec'].unit = ''
     suffix_pos += '_ra_{:.1f}_dec_{:.1f}_rad_{:.1f}'.format(ra_center, dec_center, position_radius)
@@ -229,9 +256,9 @@ if normalize_abund:
 if weights_abund:
     suffix += '_weight'
     print 'Abundance weighting'
-    for i_col in range(len(abund_cols)):
+    for i_col in range(len(abund_cols_use)):
         ab_multi = get_multipler(std_abundances[i_col])
-        print ' ', abund_cols[i_col], ab_multi, std_abundances[i_col]
+        print ' ', abund_cols_use[i_col], ab_multi, std_abundances[i_col]
         galah_cannon_subset_abund[:, i_col] *= ab_multi
 
 print 'Input filtered data lines: '+str(len(galah_cannon_subset))
@@ -250,9 +277,17 @@ elif hierachical_scipy:
     # method
     suffix += '_weighted'
     # distance computation
-    suffix += '_manhattan'
+    suffix += '_'+linkage_metric
+if loose_pairs:
+    suffix += '_loose'
 
-final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob'+suffix+suffix_pos
+final_dir = 'NJ_tree'
+if use_cannon2:
+    final_dir += '_cannon_2.1.7'
+else:
+    final_dir += '_cannon_1.2'
+
+final_dir += '_mainrun_abundflags_chi2_prob'+suffix+suffix_pos
 # final_dir = 'NJ_tree_cannon_1.2_mainrun_abundflags_chi2_prob_tgas_norep_norm_megacc_manhattan'
 move_to_dir(final_dir)
 
@@ -267,10 +302,7 @@ if filter_by_sky_position:
                                                                        dec=dec_center * un.deg)) <= position_radius * un.deg
     observed_field = np.int8(loc_observed).reshape(_dec.shape)
     fig, ax = plt.subplots(1, 1)
-    print observed_field.shape
-    print np.sum(loc_observed)
-    print np.sum(observed_field)
-    im_ax = ax.imshow(observed_field.T, interpolation=None, cmap='seismic', origin='lower')
+    im_ax = ax.imshow(observed_field.T, interpolation=None, cmap='seismic', origin='lower', vmin=0, vmax=1)
     fig.colorbar(im_ax)
     ax.set_axis_off()
     fig.tight_layout()
@@ -334,7 +366,7 @@ if not os.path.isfile(output_nwm_file):
         os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
     elif hierachical_scipy:
         print 'Hierarchical clustering started'
-        linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric='cityblock')  # might use too much RAM
+        linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric=linkage_metric)  # might use too much RAM
         linkage_tree = to_tree(linkage_matrix, False)
         newic_tree_str = getNewick(linkage_tree, "", linkage_tree.dist, galah_cannon_subset['sobject_id'].data)
         nwm_txt = open(output_nwm_file, 'w')
@@ -367,7 +399,7 @@ if plot_overall_graphs:
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches.png')
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
     colorize_tree_branches(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff_branches.png')
-    # for abund in abund_cols:
+    # for abund in abund_cols_use:
     #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
     #     colorize_tree_branches(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'_branches.png')
 
@@ -415,13 +447,24 @@ if investigate_repeated:
         if len(topology_dist) > 0:
             if save_results:
                 txt_file.write('Mean distance: ' + str(mean_topology_dist) + '\n')
-                txt_file.write('Neighbours: ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
+                txt_file.write('Neighbours:   ' + str(n_neighbours) + '  ' + str(100.*n_neighbours/len(topology_dist)) + '%\n')
+                n_neighbours_2 = np.sum(np.array(topology_dist) <= 2)
+                n_neighbours_3 = np.sum(np.array(topology_dist) <= 3)
+                n_neighbours_4 = np.sum(np.array(topology_dist) <= 4)
+                n_neighbours_5 = np.sum(np.array(topology_dist) <= 5)
+                txt_file.write('Neighbours 2: ' + str(n_neighbours_2) + '  ' + str(100. * n_neighbours_2 / len(topology_dist)) + '%\n')
+                txt_file.write('Neighbours 3: ' + str(n_neighbours_3) + '  ' + str(100. * n_neighbours_3 / len(topology_dist)) + '%\n')
+                txt_file.write('Neighbours 4: ' + str(n_neighbours_4) + '  ' + str(100. * n_neighbours_4 / len(topology_dist)) + '%\n')
+                txt_file.write('Neighbours 5: ' + str(n_neighbours_5) + '  ' + str(100. * n_neighbours_5 / len(topology_dist)) + '%\n')
+
                 txt_file.close()
             else:
                 print mean_topology_dist
                 print n_neighbours, 100.*n_neighbours/len(topology_dist)
-        else:
-            print 'NOTE: No repeated observations found in the dataset'
+        # temporally added exit as further analysis is not needed/wanted
+        raise SystemExit
+    else:
+        print 'NOTE: No repeated observations found in the dataset'
 
 print 'Traversing tree leaves - find mayor branches splits'
 nodes_to_investigate = list([])
@@ -476,7 +519,7 @@ mark_objects(tree_struct, np.int64(sobjects_analyzed_all), path='analysis_select
 print 'Final number of nodes to be investigated is: ', len(nodes_to_investigate)
 for i_node in range(len(nodes_to_investigate)):
     descendants = get_decendat_sobjects(nodes_to_investigate[i_node])
-    start_gui_explorer(descendants, manual=manual_GUI_investigation,
+    start_gui_explorer(descendants, manual=manual_GUI_investigation, initial_only=False, loose=loose_pairs,
                        save_dir=trees_dir+final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
 
 
@@ -491,7 +534,7 @@ for t_node in tree_struct.traverse():
         descendants = get_decendat_sobjects(t_node)
         n_descendants = len(descendants)
         if n_descendants < 25 and n_descendants > 20:
-            start_gui_explorer(descendants, manual=manual_GUI_investigation,
+            start_gui_explorer(descendants, manual=manual_GUI_investigation, initial_only=False, loose=loose_pairs,
                                save_dir=trees_dir + final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
 
 raise SystemExit
