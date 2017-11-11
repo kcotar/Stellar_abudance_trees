@@ -21,6 +21,8 @@ from norm import *
 
 imp.load_source('distf', '../tSNE_test/distances.py')
 from distf import *
+imp.load_source('esd_dist', '../tSNE_test/esd_distance.py')
+from esd_dist import *
 
 from colorize_tree import *
 from filter_galah import *
@@ -53,7 +55,8 @@ tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when av
 use_cannon2 = False
 
 # positional filtering settings
-linkage_metric = 'cityblock'
+linkage_metric = 'esd'
+
 loose_pairs = True
 filter_by_sky_position = True
 if len(input_arguments) > 3:
@@ -366,7 +369,10 @@ if not os.path.isfile(output_nwm_file):
         os.system('megacc -a '+nj_data_dir+'infer_NJ_distances.mao -d distances.meg -o '+output_nwm_file)
     elif hierachical_scipy:
         print 'Hierarchical clustering started'
-        linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric=linkage_metric)  # might use too much RAM
+        if linkage_metric is 'esd':
+            linkage_matrix = linkage(esd_dist_compute(galah_cannon_subset_abund, triu=True), method='weighted')
+        else:
+            linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric=linkage_metric)  # might use too much RAM
         linkage_tree = to_tree(linkage_matrix, False)
         newic_tree_str = getNewick(linkage_tree, "", linkage_tree.dist, galah_cannon_subset['sobject_id'].data)
         nwm_txt = open(output_nwm_file, 'w')
@@ -388,10 +394,10 @@ tree_struct = get_tree_from_file(output_nwm_file)
 
 if plot_overall_graphs:
     print 'Plotting graphs'
-    for cluster in np.unique(stars_cluster_data['cluster_name']):
-        print cluster
-        cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
-        mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
+    # for cluster in np.unique(stars_cluster_data['cluster_name']):
+    #     print cluster
+    #     cluster_targets = stars_cluster_data[stars_cluster_data['cluster_name'] == cluster]['sobject_id']
+    #     mark_objects(tree_struct, cluster_targets, path='cluster_'+cluster+'.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'logg_cannon', path='tree_logg.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'feh_cannon', path='tree_feh.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'teff_cannon', path='tree_teff.png')
@@ -522,135 +528,4 @@ for i_node in range(len(nodes_to_investigate)):
     start_gui_explorer(descendants, manual=manual_GUI_investigation, initial_only=False, loose=loose_pairs,
                        save_dir=trees_dir+final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
 
-
-raise SystemExit
-print 'Traversing tree leaves - min number of objects in leaves cluster'
-i_t = 0
-for t_node in tree_struct.traverse():
-    i_t += 1
-    if i_t < 1500:
-        continue
-    if t_node.name == '':
-        descendants = get_decendat_sobjects(t_node)
-        n_descendants = len(descendants)
-        if n_descendants < 25 and n_descendants > 20:
-            start_gui_explorer(descendants, manual=manual_GUI_investigation, initial_only=False, loose=loose_pairs,
-                               save_dir=trees_dir + final_dir, i_seq=i_node, kinematics_source=tgas_ucac5_use)
-
-raise SystemExit
-# start traversing the tree
-print 'Traversing tree leaves - tree final leaves only'
-
-# join datasets
-actions_data = Table.read(galah_data_dir+'galah_tgas_xmatch_actions.fits')['sobject_id', 'J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z', 'Theta_R', 'Theta_Phi', 'Theta_Z',
-                                                                                     'ra_gaia', 'dec_gaia', 'parallax', 'pmra', 'pmdec']
-# actions_data = actions_data[np.isfinite(actions_data['J_R'])].filled()
-galah_tgas = join(galah_cannon_subset, actions_data, keys='sobject_id', join_type='inner')
-
-if save_results:
-    txt_file = open('leaves_obs.txt', 'w')
-for t_node in tree_struct.traverse():
-    if t_node.name == '':
-        if is_node_before_leaves(t_node, min_leaves=2):
-            s_obj_names = get_decendat_sobjects(t_node)
-            galah_tgas_sub = get_data_subset(galah_tgas, s_obj_names, select_by='sobject_id')
-            xyz_gal_pos, rpz_gal_pos, uvw_gal_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
-            if evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh') < 20:
-                if galah_tgas_sub[0]['galah_id'] == galah_tgas_sub[1]['galah_id']:
-                    out_text_line = '--------    Repeated obs:    ---------\nsobject_ids: ' + ' '.join(s_obj_names) + '\n'
-                    if save_results:
-                        txt_file.write(out_text_line)
-                    else:
-                        print out_text_line
-                    continue
-                n_in_clusters = objects_in_list(np.int64(s_obj_names), stars_cluster_data['sobject_id'])
-                if n_in_clusters > 0:
-                    out_text_line = '-----    Known ('+str(n_in_clusters)+') cluster obj  ------'
-                    if save_results:
-                        txt_file.write(out_text_line+'\n')
-                    else:
-                        print out_text_line
-                if save_results:
-                    txt_file.write('sobject_ids: '+' '.join(s_obj_names) + '\n')
-                    txt_file.write('XYZ pos:\n' + str(xyz_gal_pos) + '\n')
-                    txt_file.write('RPZ pos:\n' + str(rpz_gal_pos) + '\n')
-                    txt_file.write('UVW vel:\n' + str(uvw_gal_vel) + '\n')
-                    txt_file.write('\n')
-                else:
-                    print s_obj_names
-                    print xyz_gal_pos
-                    print rpz_gal_pos
-                    print uvw_gal_vel
-                    print 'Space dist ', evaluate_pairwise_distances(xyz_gal_pos, median=True, meassure='eucl')
-                    print 'Veloc dist ', evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh')
-                    print
-                # repeat the same analysis from ancestors point of view
-                for ancestor_node in t_node.get_ancestors()[0:1]:  # for now investigate only from the first ancestor
-                    s_obj_names = get_decendat_sobjects(ancestor_node)
-                    galah_tgas_sub = get_data_subset(galah_tgas, s_obj_names, select_by='sobject_id')
-                    xyz_gal_pos, rpz_gal_pos, uvw_gal_vel = predict_stream_description(galah_tgas_sub, xyz_out=True)
-                    # if evaluate_angles(star_angles) > 75 and evaluate_pairwise_distances(star_xyz_vel, median=True) < 20:
-                    if save_results:
-                        txt_file.write('sobject_ids: ' + ' '.join(s_obj_names) + '\n')
-                        txt_file.write('XYZ pos:\n' + str(xyz_gal_pos) + '\n')
-                        txt_file.write('RPZ pos:\n' + str(rpz_gal_pos) + '\n')
-                        txt_file.write('UVW vel:\n' + str(uvw_gal_vel) + '\n')
-                        txt_file.write('\n')
-                    else:
-                        print '-- >Second step, from ancestors point of view'
-                        print s_obj_names
-                        print xyz_gal_pos
-                        print rpz_gal_pos
-                        print uvw_gal_vel
-                        print 'Space dist ', evaluate_pairwise_distances(xyz_gal_pos, median=True, meassure='eucl')
-                        print 'Veloc dist ', evaluate_pairwise_distances(uvw_gal_vel, median=True, meassure='manh')
-                        print
-
-                    # if len(node_desc) == 2:  # get final branches
-        #     s_obj = list([])
-        #     for node in node_desc:
-        #         node_name = node.name
-        #         if node_name != '':
-        #             s_obj.append(node_name)
-        #     if not (np.array(s_obj) == '').any():
-        #         idx_galah_tgas = np.where(np.in1d(galah_tgas['sobject_id'], np.int64(s_obj)))
-        #         # node_data = galah_tgas[idx_galah_tgas]['J_R', 'L_Z', 'J_Z'].to_pandas().values
-        #         if len(idx_galah_tgas[0]) == 2:
-        #             # node_dist = np.sum(np.abs(node_data[0]-node_data[1]))
-        #             # compute xyz velocities
-        #             galah_tgas_sub = galah_tgas[idx_galah_tgas]
-        #             xyz_pos = coord.SkyCoord(ra=galah_tgas_sub['ra_gaia']*un.deg,
-        #                                      dec=galah_tgas_sub['dec_gaia']*un.deg,
-        #                                      distance=1e3/galah_tgas_sub['parallax']*un.pc).cartesian
-        #             xyz_vel = motion_to_cartesic(galah_tgas_sub['ra_gaia'], galah_tgas_sub['dec_gaia'],
-        #                                          galah_tgas_sub['pmra'],
-        #                                          galah_tgas_sub['pmdec'], galah_tgas_sub['rv_guess'],
-        #                                          plx=galah_tgas_sub['parallax']).T
-        #             stream_pred = mean_velocity(xyz_vel)
-        #             stream_plane_intersect = stream_plane_vector_intersect(xyz_pos, xyz_vel, stream_pred)
-        #             intersect_dist = points_distance(stream_plane_intersect[0], stream_plane_intersect[1])
-        #             vel_dist = np.sum(np.abs(xyz_vel[0] - xyz_vel[1]))
-        #             # if node_dist < 0.02:
-        #             #     print s_obj
-        #             if intersect_dist < 500 and vel_dist < 20:
-        #                 if galah_tgas_sub[0]['galah_id'] == galah_tgas_sub[1]['galah_id']:
-        #                     repeated_text = '  - repeated observation of object '+str(galah_tgas_sub[0]['galah_id'])
-        #                 else:
-        #                     repeated_text = ''
-        #                 if save_results:
-        #                     txt_file.write('sobject_ids: '+' '.join(s_obj) + '\n'+repeated_text+'\n')
-        #                     txt_file.write('Dist veloc: '+str(vel_dist) + '\n')
-        #                     txt_file.write('Dist plane: '+str(intersect_dist) + '\n')
-        #                     txt_file.write('XYZ velocity:\n' + str(xyz_vel) + '\n')
-        #                     txt_file.write('Plane intersect:\n' + str(stream_plane_intersect) + '\n')
-        #                     txt_file.write('\n')
-        #                 else:
-        #                     print s_obj,repeated_text
-        #                     print 'Dist veloc: ', vel_dist
-        #                     print 'Dist plane: ', intersect_dist
-        #                     # print galah_tgas_sub['J_R', 'L_Z', 'J_Z', 'Omega_R', 'Omega_Phi', 'Omega_Z']
-        #                     print 'XYZ velocity:\n', xyz_vel
-        #                     print 'Plane intersect:\n', stream_plane_intersect
-        #                     print ''
-if save_results:
-    txt_file.close()
+z
