@@ -17,7 +17,7 @@ from getopt import getopt
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir, get_abundance_cols, get_abundance_cols3, define_cluster_centers, determine_clusters_abundance_deviation, get_multipler, string_bool
 imp.load_source('helper2', '../tSNE_test/cannon3_functions.py')
-from helper2 import remove_abundances
+from helper2 import remove_abundances, object_with_min_abundances, cannon_ok_flags, cannon_bad_flags
 imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
 from norm import *
 
@@ -41,6 +41,7 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
+sys.setrecursionlimit(2000)  # correction for deeper trees (RuntimeError: maximum recursion depth exceeded while calling a Python object)
 # input arguments
 input_arguments = sys.argv
 
@@ -48,7 +49,7 @@ input_arguments = sys.argv
 join_repeated_obs = False
 normalize_abund = True
 weights_abund = False
-plot_overall_graphs = True
+plot_overall_graphs = False
 perform_data_analysis = True
 investigate_repeated = True
 save_results = True
@@ -129,48 +130,55 @@ galah_filter_ok = FILTER(verbose=True)
 # remove data from the initial observations
 galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140203000000000, comparator='>')
 
-#########
-# NOTE: temporary test for clustering of data with the same
-# general flags statistics
-flags_data = galah_cannon[abund_cols_f].to_pandas().values
-flags_data = np.int64(flags_data <= 3)
-flags_weights = 2**np.arange(len(abund_cols_f))  # kind of binary flag set description
-flags_data *= flags_weights
-flags_data_sum = np.sum(flags_data, axis=1)
-u_flag_w, u_flag_w_counts = np.unique(flags_data_sum, return_counts=True)
-# abund and object filtering based on those inforation
-idx_u_flag_w = np.argsort(u_flag_w_counts)[-4]
-idx_objects = np.logical_and(flags_data_sum == u_flag_w[idx_u_flag_w],
-                             np.isfinite(galah_cannon[abund_cols_use].to_pandas().values).all(axis=1))
-idx_cols = np.where(flags_data[np.where(idx_objects)[0][0], :] > 0)
-flags_data = None
-# do the actuall subseting of datasets
-abund_cols_use = list(np.array(abund_cols_use)[idx_cols])
-abund_cols_f_use = list(np.array(abund_cols_f_use)[idx_cols])
-galah_filter_ok._merge_ok(idx_objects)
-print abund_cols_use, abund_cols_f
-# NOTE: test end
-#########
+# #########
+# # NOTE: temporary test for clustering of data with the same
+# # general flags statistics
+# flags_data = galah_cannon[abund_cols_f].to_pandas().values
+# flags_data = np.int64(flags_data <= 3)
+# flags_weights = 2**np.arange(len(abund_cols_f))  # kind of binary flag set description
+# flags_data *= flags_weights
+# flags_data_sum = np.sum(flags_data, axis=1)
+# u_flag_w, u_flag_w_counts = np.unique(flags_data_sum, return_counts=True)
+# # abund and object filtering based on those inforation
+# idx_u_flag_w = np.argsort(u_flag_w_counts)[-4]
+# idx_objects = np.logical_and(flags_data_sum == u_flag_w[idx_u_flag_w],
+#                              np.isfinite(galah_cannon[abund_cols_use].to_pandas().values).all(axis=1))
+# idx_cols = np.where(flags_data[np.where(idx_objects)[0][0], :] > 0)
+# flags_data = None
+# # do the actuall subseting of datasets
+# abund_cols_use = list(np.array(abund_cols_use)[idx_cols])
+# abund_cols_f_use = list(np.array(abund_cols_f_use)[idx_cols])
+# galah_filter_ok._merge_ok(idx_objects)
+# print abund_cols_use, abund_cols_f
+# # NOTE: test end
+# #########
 
 # ------------------------------------------------------------------
 # -------------------- Abundance data filtering --------------------
 # ------------------------------------------------------------------
 # first remove all somehow flagged observation
+print 'Red and guess flags'
 galah_filter_ok._merge_ok(galah_cannon['red_flag'] == 0)
 galah_filter_ok._merge_ok(galah_cannon['flag_guess'] == 0)
 
 # filter by cannon CHI2 value
 # about 35-40k for 1.2 and 75k for 2.1.7
 # galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=35000, comparator='<')
+print 'SNR C2 cut'
 galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c2_iraf', value=20, comparator='>')
 
 # filter out classes of possibly problematic stars as detected by Gregor
 # determine which problematic stars might be problematic for abundance determination
-# NOTE: abundance data is already flaged by Sven for this kind of problematic objects
+# NOTE: abundance data is already flagged by Sven for this kind of problematic objects
 
 # filter out data that are not in kinematics dataset
+print 'Kinematics cut'
 suffix += '_'+tgas_ucac5_use
 galah_filter_ok.filter_objects(galah_cannon, galah_kinematics_xmatch, identifier='sobject_id', invert=False)
+
+# select only object with enough unglagged abundances
+print 'Only enough unflagged abundances'
+galah_filter_ok._merge_ok(object_with_min_abundances(galah_cannon, abund_cols_f_use, len(abund_cols_f_use)/2))
 
 # create a subset defined by filters above
 galah_cannon_subset = galah_filter_ok.apply_filter(galah_cannon)
@@ -230,7 +238,7 @@ if normalize_abund:
     suffix += '_norm'
     print 'Normalizing abundances'
     cannon_flags = galah_cannon_subset[abund_cols_f_use].to_pandas().values
-    cannon_flags = np.logical_or(cannon_flags == 0, cannon_flags == 2)
+    cannon_flags = cannon_bad_flags(cannon_flags)
     galah_cannon_subset_abund[cannon_flags] = np.nan
     cannon_data_means = np.nanmean(galah_cannon_subset_abund, axis=0)
     cannon_data_stds = np.nanstd(galah_cannon_subset_abund, axis=0)
@@ -402,7 +410,7 @@ for t_node in tree_struct.traverse():
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
             n_objects_up = 2
-            max_add_objects = 6
+            max_add_objects = 8
             ancestor_nodes = t_node.get_ancestors()
             for i_a in range(len(ancestor_nodes)):
                 ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
