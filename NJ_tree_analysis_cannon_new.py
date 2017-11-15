@@ -46,12 +46,12 @@ sys.setrecursionlimit(2000)  # correction for deeper trees (RuntimeError: maximu
 input_arguments = sys.argv
 
 # data settings
-join_repeated_obs = False
+join_repeated_obs = True
 normalize_abund = True
 weights_abund = False
 plot_overall_graphs = False
 perform_data_analysis = True
-investigate_repeated = True
+investigate_repeated = False
 save_results = True
 manual_GUI_investigation = False
 tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when available)
@@ -128,7 +128,9 @@ print 'Input data lines: '+str(len(galah_cannon))
 print 'Creating filters for data subset'
 galah_filter_ok = FILTER(verbose=True)
 # remove data from the initial observations
-galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140203000000000, comparator='>')
+print 'Commissioning and test nights'
+galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140301000000000, comparator='>')
+# UPDATED DATES: remove commissioning spectra and first few test nights
 
 # #########
 # # NOTE: temporary test for clustering of data with the same
@@ -409,24 +411,8 @@ for t_node in tree_struct.traverse():
     if t_node.name == '':
         if is_node_before_leaves(t_node, min_leaves=2):
             # find ouh how far into the tree you can go before any mayor tree split happens
-            n_objects_up = 2
-            max_add_objects = 8
-            ancestor_nodes = t_node.get_ancestors()
-            for i_a in range(len(ancestor_nodes)):
-                ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
-                n_ancestor_obj_names = len(ancestor_obj_names)
-                if n_ancestor_obj_names >= n_objects_up + max_add_objects:
-                    if n_objects_up < 2:
-                        # skip investigation of clusters with only 2 members
-                        break
-                    # print n_objects_up
-                    if i_a > 0:
-                        nodes_to_investigate.append(ancestor_nodes[i_a-1])
-                    else:
-                        nodes_to_investigate.append(t_node)
-                    break
-                else:
-                    n_objects_up = n_ancestor_obj_names
+            split_node = get_major_split(t_node)
+            nodes_to_investigate.append(split_node)
 
 # determine unique nodes to be investigated
 # nodes_to_investigate = np.unique(nodes_to_investigate)

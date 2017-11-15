@@ -169,3 +169,26 @@ def getNewick(node, newick, parentdist, leaf_names):
         newick = getNewick(node.get_right(), ",%s" % (newick), node.dist, leaf_names)
         newick = "(%s" % (newick)
         return newick
+
+
+def get_major_split(t_node, max_add_objects=8, n_levels=None):
+    n_objects_up = 2
+    ancestor_nodes = t_node.get_ancestors()
+    if n_levels is not None:
+        return ancestor_nodes[n_levels - 1]
+    else:
+        for i_a in range(len(ancestor_nodes)):
+            ancestor_obj_names = get_decendat_sobjects(ancestor_nodes[i_a])
+            n_ancestor_obj_names = len(ancestor_obj_names)
+            if n_ancestor_obj_names >= n_objects_up + max_add_objects:
+                if n_objects_up < 2:
+                    # skip investigation of clusters with only 2 members
+                    break
+                # print n_objects_up
+                if i_a > 0:
+                    return ancestor_nodes[i_a - 1]
+                else:
+                    return t_node
+                break
+            else:
+                n_objects_up = n_ancestor_obj_names
