@@ -14,6 +14,13 @@ date_string = '20171111'
 
 final_cluster_col = 'cluster'
 
+# cluster members dataset 0
+cluster_data_0 = Table.read(clusters_dir+'sobject_clusters_manual_klemen.csv', format='ascii.csv')
+cluster_data_0 = unique(cluster_data_0, keys='sobject_id', silent=False, keep='first')
+cluster_col = 'cluster'
+cluster_data_0[final_cluster_col] = [str(n) for n in cluster_data_0[cluster_col]]
+cluster_data_0['source'] = 'kc_manual'
+
 # cluster members dataset 1
 cluster_data_1 = Table.read(clusters_dir+'sobject_clusterstars_1.0.fits')
 cluster_data_1 = unique(cluster_data_1, keys='sobject_id', silent=False, keep='first')
@@ -50,17 +57,28 @@ cluster_col = 'Cluster'
 cluster_data_4[final_cluster_col] = [str(n) for n in cluster_data_4[cluster_col]]
 cluster_data_4['source'] = 'Dias_2014'
 
-# join datasets
-cluster_data_final = vstack([cluster_data_1['sobject_id', final_cluster_col, 'source'],
+# join all datasets
+cluster_data_final = vstack([cluster_data_0['sobject_id', final_cluster_col, 'source'],
+                             cluster_data_1['sobject_id', final_cluster_col, 'source'],
                              cluster_data_2['sobject_id', final_cluster_col, 'source'],
                              cluster_data_3['sobject_id', final_cluster_col, 'source'],
                              cluster_data_4['sobject_id', final_cluster_col, 'source']])
+
+# join only datasets prepared by GALAH memebers
+cluster_data_final_galah = vstack([cluster_data_0['sobject_id', final_cluster_col, 'source'],
+                                   cluster_data_1['sobject_id', final_cluster_col, 'source']])
+
 
 # save results
 cluster_data_final_fits = clusters_dir+'galah_cluster_members_merged_'+date_string+'.fits'
 if os.path.isfile(cluster_data_final_fits):
     os.remove(cluster_data_final_fits)
 cluster_data_final.write(cluster_data_final_fits)
+
+cluster_data_final_fits = clusters_dir+'galah_cluster_members_merged_galahonly_'+date_string+'.fits'
+if os.path.isfile(cluster_data_final_fits):
+    os.remove(cluster_data_final_fits)
+cluster_data_final_galah.write(cluster_data_final_fits)
 
 
 # ------------------------------------------------------------------

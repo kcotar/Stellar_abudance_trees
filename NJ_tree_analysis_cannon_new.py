@@ -15,9 +15,9 @@ from astropy.table import Table, join
 from getopt import getopt
 
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
-from helper import move_to_dir, get_abundance_cols, get_abundance_cols3, define_cluster_centers, determine_clusters_abundance_deviation, get_multipler, string_bool
+from helper import *
 imp.load_source('helper2', '../tSNE_test/cannon3_functions.py')
-from helper2 import remove_abundances, object_with_min_abundances, cannon_ok_flags, cannon_bad_flags
+from helper2 import *
 imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
 from norm import *
 
@@ -46,10 +46,10 @@ sys.setrecursionlimit(2000)  # correction for deeper trees (RuntimeError: maximu
 input_arguments = sys.argv
 
 # data settings
-join_repeated_obs = True
+join_repeated_obs = False
 normalize_abund = True
-weights_abund = False
-plot_overall_graphs = False
+weights_abund = True
+plot_overall_graphs = True
 perform_data_analysis = True
 investigate_repeated = False
 save_results = True
@@ -84,7 +84,7 @@ if len(input_arguments) > 3:
 
 else:
     ra_center = 30.  # degrees
-    dec_center = 90.  # degrees
+    dec_center = 0.  # degrees
     position_radius = 35.  # degrees
 
 # tree generation algorithm settings
@@ -113,12 +113,13 @@ elif tgas_ucac5_use is 'ucac5':
     galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_cannon_3.0_ucac5_joined_20171111.fits')['sobject_id', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error']
 
 # known stars in clusters in this dataset
-stars_cluster_data = Table.read(galah_data_dir+'clusters/galah_cluster_members_merged.fits')
+stars_cluster_data = Table.read(galah_data_dir+'clusters/galah_cluster_members_merged_galahonly_20171111.fits')
 clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 
 # get cannon abundance cols
 abund_cols = get_abundance_cols3(galah_cannon.colnames)
-abund_cols = remove_abundances(abund_cols, ['Eu', 'Li', 'Rb', 'Ru', 'Sm', 'Sr', 'Zr', 'C', 'Mo'])
+abund_cols = remove_abundances(abund_cols, what_abund_remove())
+abund_elem = get_element_names(abund_cols)
 abund_cols_use = list(abund_cols)
 abund_cols_f = ['flag_'+col for col in abund_cols]
 abund_cols_f_use = list(abund_cols_f)
@@ -239,12 +240,14 @@ galah_cannon_subset_abund = galah_cannon_subset[abund_cols_use].to_pandas().valu
 if normalize_abund:
     suffix += '_norm'
     print 'Normalizing abundances'
+    print abund_cols_use
     cannon_flags = galah_cannon_subset[abund_cols_f_use].to_pandas().values
     cannon_flags = cannon_bad_flags(cannon_flags)
     galah_cannon_subset_abund[cannon_flags] = np.nan
     cannon_data_means = np.nanmean(galah_cannon_subset_abund, axis=0)
     cannon_data_stds = np.nanstd(galah_cannon_subset_abund, axis=0)
     galah_cannon_subset_abund = (galah_cannon_subset_abund - cannon_data_means) / cannon_data_stds
+    print cannon_data_means, cannon_data_stds
     cannon_data_means[:] = 0
 
 # apply weights to the normalized abund parameters if requested to do so
@@ -252,8 +255,8 @@ if weights_abund:
     suffix += '_weight'
     print 'Abundance weighting'
     for i_col in range(len(abund_cols_use)):
-        ab_multi = get_multipler(std_abundances[i_col])
-        print ' ', abund_cols_use[i_col], ab_multi, std_abundances[i_col]
+        ab_multi = abund_multiplier_c3(abund_elem[i_col])
+        print ' ', abund_elem[i_col], ab_multi
         galah_cannon_subset_abund[:, i_col] *= ab_multi
 
 print 'Input filtered data lines: '+str(len(galah_cannon_subset))
@@ -313,6 +316,8 @@ if not os.path.isfile(output_nwm_file):
             linkage_matrix = linkage(esd_dist_compute(galah_cannon_subset_abund, means=cannon_data_means, stds=cannon_data_stds, triu=True), method='weighted')
         elif linkage_metric == 'cityblocknans':
             linkage_matrix = linkage(cityblock_nans(galah_cannon_subset_abund, triu=True), method='weighted')
+        elif linkage_metric == 'cosinedistnans':
+            linkage_matrix = linkage(cosinedist_nans(galah_cannon_subset_abund, triu=True), method='weighted')
         else:
             linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric=linkage_metric)  # might use too much RAM for large arrays
         linkage_tree = to_tree(linkage_matrix, False)
@@ -334,8 +339,8 @@ if plot_overall_graphs:
     # colorize_tree(tree_struct, galah_cannon_subset, 'Feh_cannon', path='tree_feh.png')
     # colorize_tree(tree_struct, galah_cannon_subset, 'Teff_cannon', path='tree_teff.png')
     # colorize_tree_branches(tree_struct, galah_cannon_subset, 'Logg_cannon', path='tree_logg_branches.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'Feh_cannon', path='tree_feh_branches.png')
-    colorize_tree_branches(tree_struct, galah_cannon_subset, 'Feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'Feh_cannon', path='tree_feh_branches.png')
+    # colorize_tree_branches(tree_struct, galah_cannon_subset, 'Feh_cannon', path='tree_feh_branches_leaves.png', leaves_only=True)
     # colorize_tree_branches(tree_struct, galah_cannon_subset, 'Teff_cannon', path='tree_teff_branches.png')
     # for abund in abund_cols_use:
     #     colorize_tree(tree_struct, galah_cannon_subset, abund, path='tree_abund_'+abund+'.png')
