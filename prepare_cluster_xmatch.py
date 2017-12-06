@@ -43,12 +43,16 @@ galah_stars_pos = Table.read(data_dir + 'sobject_iraf_52_reduced_'+date_string+'
 galah_stars_pos = galah_stars_pos[np.logical_and(galah_stars_pos['red_flag'] & 64 != 64,
                                                  galah_stars_pos['flag_guess'] == 0)]
 
-dat_files = glob(data_dir + kharchenko_subdir + '2m_*.dat')
+# galah_stars_pos = galah_stars_pos[np.logical_and(galah_stars_pos['sobject_id']>170122002601000,
+#                                                  galah_stars_pos['sobject_id']<170122002601400)]
+print len(galah_stars_pos)
+
+dat_files = glob(data_dir + kharchenko_subdir + '2m_*NGC_*.dat')
 print 'Number of dat files:', len(dat_files)
 
-for cluster_dat in dat_files:
+for cluster_dat in dat_files[440:]:
     filename = cluster_dat.split('/')[-1][:-4]
-    out_filename = data_dir + kharchenko_subdir + filename + '_'+date_string+'_galah.fits'
+    out_filename = data_dir + kharchenko_subdir + filename + '_'+date_string+'_galah_all.fits'
     print 'Working on cluster file:', filename
     print ' '+str(dat_files.index(cluster_dat)+1)+' of '+str(len(dat_files))
     if os.path.isfile(out_filename):
@@ -58,16 +62,18 @@ for cluster_dat in dat_files:
     # read and parse dat file
     print ' Parsing dat file'
     cluster_pos = parse_kharchenko_cluster_dat(cluster_dat)
-    # most probable cluster members based on multiple parameters
-    idx_probable = np.logical_and(np.logical_and(cluster_pos['Pkin'] > 10.0,
-                                                 cluster_pos['PJH'] > 10.0),
-                                  np.logical_and(cluster_pos['PJKs'] > 10.,
-                                                 cluster_pos['Ps'] >= 0))
-    #
-    print ' Probable stars in cluster: {:.1f}%'.format(100.*np.sum(idx_probable)/len(idx_probable))
+    # cluster_pos = Table.read(filename+'.fits')
 
-    # filter out interesting objects
-    cluster_pos = cluster_pos[idx_probable]
+    # most probable cluster members based on multiple parameters
+    # idx_probable = np.logical_and(np.logical_and(cluster_pos['Pkin'] > 10.0,
+    #                                              cluster_pos['PJH'] > 0.0),
+    #                               np.logical_and(cluster_pos['PJKs'] > 0.,
+    #                                              cluster_pos['Ps'] >= 0))
+    # #
+    # print ' Probable stars in cluster: {:.1f}%'.format(100.*np.sum(idx_probable)/len(idx_probable))
+    #
+    # # filter out interesting objects
+    # cluster_pos = cluster_pos[idx_probable]
 
     # determine center pos of this cluster
     ra_cluster_center = np.mean(cluster_pos['ra'])
@@ -98,10 +104,20 @@ for cluster_dat in dat_files:
                 print ' ', id_star+1, 'out of', n_possible
             star = cluster_pos[id_star]
             star_coord = coord.SkyCoord(ra=star['ra']*un.deg, dec=star['dec']*un.deg)
-            idx_match = np.where(galah_coords_sub.separation(star_coord) <= max_sep)[0]
-            if len(idx_match) == 1:
-                n_matches += 1
-                cluster_pos[id_star]['sobject_id'] = galah_stars_pos[idx_match[0]]['sobject_id']
+            idx_match = np.where(galah_coords_sub.separation(star_coord) <= max_sep)
+            idx_match = idx_match[0]
+            n_idx_match = len(idx_match)
+            if n_idx_match > 0:
+                print galah_stars_pos_sub[idx_match]['sobject_id'].data
+                if n_idx_match == 1:
+                    cluster_pos[id_star]['sobject_id'] = galah_stars_pos_sub[idx_match[0]]['sobject_id']
+                else:
+                    # print 'More than one match'
+                    row_data = cluster_pos[id_star]
+                    for s_sid_match in galah_stars_pos_sub[idx_match]['sobject_id']:
+                        row_data['sobject_id'] = s_sid_match
+                        cluster_pos.add_row(row_data)
+
         print ' Total matches:', n_matches
     else:
         print ' Fields not overlapping.'

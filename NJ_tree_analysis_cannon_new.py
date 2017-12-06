@@ -41,23 +41,24 @@ from ete3 import Tree
 # ------------------------------------------------------------------
 # -------------------- Program settings ----------------------------
 # ------------------------------------------------------------------
-sys.setrecursionlimit(2000)  # correction for deeper trees (RuntimeError: maximum recursion depth exceeded while calling a Python object)
+sys.setrecursionlimit(5000)  # correction for deeper trees (RuntimeError: maximum recursion depth exceeded while calling a Python object)
 # input arguments
 input_arguments = sys.argv
 
 # data settings
-join_repeated_obs = False
+join_repeated_obs = True
 normalize_abund = True
 weights_abund = True
 plot_overall_graphs = True
 perform_data_analysis = True
-investigate_repeated = False
+investigate_repeated = True
 save_results = True
 manual_GUI_investigation = False
 tgas_ucac5_use = 'ucac5'  # valid options are 'tgas', 'ucac5' and 'gaia'(when available)
 
 # positional filtering settings
 linkage_metric = 'cityblock'
+linkage_method = 'weighted'
 
 loose_pairs = True
 filter_by_sky_position = True
@@ -70,13 +71,15 @@ if len(input_arguments) > 3:
     # select only input arguments including -- string
     input_options = [arg for arg in input_arguments if '--' in arg]
     if len(input_options) > 0:
-        opts, args = getopt(input_options, '', ['metric=', 'join=', 'loose='])
+        opts, args = getopt(input_options, '', ['metric=', 'join=', 'loose=', 'method='])
         # set parameters, depending on user inputs
         print input_arguments
         print opts
         for o, a in opts:
             if o == '--metric':
                 linkage_metric = a
+            if o == '--method':
+                linkage_method = a
             if o == '--join':
                 join_repeated_obs = string_bool(a)
             if o == '--loose':
@@ -273,7 +276,7 @@ elif hierachical_scipy:
     output_nwm_file = 'distances_network.nwk'
     suffix += '_hier'
     # method
-    suffix += '_weighted'
+    suffix += '_'+linkage_method
     # distance computation
     suffix += '_'+linkage_metric
 if loose_pairs:
@@ -303,6 +306,14 @@ if filter_by_sky_position:
     plt.savefig('area_sky_observed.png', dpi=300)
     plt.close()
 
+# create a map of used objects and mark the ones that might be cluster members
+print 'Plotting objects on sky'
+idx_in = np.in1d(galah_cannon_subset['sobject_id'], stars_cluster_data['sobject_id'])
+plt.scatter(galah_cannon_subset['ra'][idx_in], galah_cannon_subset['dec'][idx_in], lw=0, s=2.5, c='red')
+plt.scatter(galah_cannon_subset['ra'], galah_cannon_subset['dec'], lw=0, s=1, c='black')
+plt.savefig('area_sky_objects.png', dpi=500)
+plt.close()
+
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
 # ------------------------------------------------------------------
@@ -313,13 +324,13 @@ if not os.path.isfile(output_nwm_file):
     if hierachical_scipy:
         print 'Hierarchical clustering started'
         if linkage_metric == 'esd':
-            linkage_matrix = linkage(esd_dist_compute(galah_cannon_subset_abund, means=cannon_data_means, stds=cannon_data_stds, triu=True), method='weighted')
+            linkage_matrix = linkage(esd_dist_compute(galah_cannon_subset_abund, means=cannon_data_means, stds=cannon_data_stds, triu=True), method=linkage_method)
         elif linkage_metric == 'cityblocknans':
-            linkage_matrix = linkage(cityblock_nans(galah_cannon_subset_abund, triu=True), method='weighted')
+            linkage_matrix = linkage(cityblock_nans(galah_cannon_subset_abund, triu=True), method=linkage_method)
         elif linkage_metric == 'cosinedistnans':
-            linkage_matrix = linkage(cosinedist_nans(galah_cannon_subset_abund, triu=True), method='weighted')
+            linkage_matrix = linkage(cosinedist_nans(galah_cannon_subset_abund, triu=True), method=linkage_method)
         else:
-            linkage_matrix = linkage(galah_cannon_subset_abund, method='weighted', metric=linkage_metric)  # might use too much RAM for large arrays
+            linkage_matrix = linkage(galah_cannon_subset_abund, method=linkage_method, metric=linkage_metric)  # might use too much RAM for large arrays
         linkage_tree = to_tree(linkage_matrix, False)
         newic_tree_str = getNewick(linkage_tree, "", linkage_tree.dist, galah_cannon_subset['sobject_id'].data)
         nwm_txt = open(output_nwm_file, 'w')

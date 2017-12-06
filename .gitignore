@@ -19,3 +19,6 @@
 
 # Hidden files
 .fuse*
+
+# log files
+*.log
