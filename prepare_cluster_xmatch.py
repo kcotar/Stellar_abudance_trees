@@ -1,39 +1,53 @@
 import os
 import numpy as np
 
-from astropy.table import Table
+from astropy.table import Table, vstack
 from astropy import units as un
 import astropy.coordinates as coord
 import pandas as pd
 from glob import glob
 
+from joblib import Parallel, delayed
+from multiprocessing import Pool
+
 def parse_kharchenko_cluster_dat(path):
-    out_cols = ('ra','dec','B','V','J','H','Ks','e_J','e_H','e_Ks','pmra','pmdec','e_pm','RV','e_RV',
-                'flags','2MASS','ASCC','SpType','Rcl','Ps','Pkin','PJKs','PJH','MWSC')
-    spectype_pos = out_cols.index('SpType')
-    # create a Table that will hold read data
+    # # create a Table that will hold read data
+    # out_cols = ('ra','dec','B','V','J','H','Ks','e_J','e_H','e_Ks','pmra','pmdec','e_pm','RV','e_RV',
+    #             'flags','2MASS','ASCC','Rcl','Ps','Pkin','PJKs','PJH','MWSC')
+    # data_out = Table(names=out_cols,
+    #                  dtype=('f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8',
+    #                         'S15', 'i8', 'i8', 'f8', 'i8', 'f8', 'f8', 'f8', 'i8'))
+    out_cols = ('ra', 'dec', 'Ps', 'Pkin', 'PJKs', 'PJH', 'MWSC')
     data_out = Table(names=out_cols,
-                     dtype=('f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8',
-                            'S15', 'i8', 'i8', 'S15', 'f8', 'i8', 'f8', 'f8', 'f8', 'i8'))
+                     dtype=('f8', 'f8', 'i8', 'f8', 'f8', 'f8', 'i8'))
     # open txt dat file
+    print path
     txt = open(path, 'r')
     txt_data = txt.readlines()
     txt.close()
+    filename = path.split('/')[-1][:-4]
+    fits_file_split = filename.split('_')
+    cluster_name = fits_file_split[2] + '_' + fits_file_split[3]
+    print cluster_name
     # iterate over lines
-    n_cols = len(out_cols)
+    # n_cols = len(out_cols)
     for line in txt_data:
-        row_values = filter(None, line[:-1].split(' '))
-        n_vals = len(row_values)
-        if n_vals < n_cols:
-            # add one data that is missing
-            row_values.insert(spectype_pos, '')
-        elif n_vals > n_cols:
-            # remove one data col
-            for iii in range(n_vals - n_cols):
-                row_values.pop(spectype_pos+1)
-        data_out.add_row(row_values)
+        line_new = line[0:164]+line[186:]
+        row_values = filter(None, line_new[:-1].split(' '))
+        row_values = np.array(row_values)
+        # n_vals = len(row_values)
+        # if n_vals < n_cols:
+        #     # add one data that is missing
+        #     row_values.insert(spectype_pos, '')
+        # elif n_vals > n_cols:
+        #     # remove one data col
+        #     for iii in range(n_vals - n_cols):
+        #         row_values.pop(spectype_pos+1)
+        data_out.add_row(row_values[[0,1,19,20,21,22,23]])
     data_out['ra'] *= 15.  # hour to degree
-    return data_out
+    data_out['cluster'] = cluster_name
+    data_out.write(path[:-3]+'.fits')
+    return True
 
 
 data_dir = '/home/klemen/GALAH_data/'
@@ -45,12 +59,36 @@ galah_stars_pos = galah_stars_pos[np.logical_and(galah_stars_pos['red_flag'] & 6
 
 # galah_stars_pos = galah_stars_pos[np.logical_and(galah_stars_pos['sobject_id']>170122002601000,
 #                                                  galah_stars_pos['sobject_id']<170122002601400)]
-print len(galah_stars_pos)
+# print len(galah_stars_pos)
 
-dat_files = glob(data_dir + kharchenko_subdir + '2m_*NGC_*.dat')
+dat_files = glob(data_dir + kharchenko_subdir + '2m_*.dat')
 print 'Number of dat files:', len(dat_files)
 
-for cluster_dat in dat_files[440:]:
+
+# ------------------------------------
+# ------------- Approach 2 -----------
+# ------------------------------------
+# final_fits_out = data_dir + kharchenko_subdir + '2m_NGC_all.fits'
+# final_fits_out_pos = final_fits_out[:-5]+'_pos.fits'
+# data_fits = list([])
+
+data_fits = np.array(Parallel(n_jobs=32)(delayed(parse_kharchenko_cluster_dat)(cluster_dat) for cluster_dat in dat_files))
+
+# for cluster_dat in dat_files:
+#     filename = cluster_dat.split('/')[-1][:-4]
+#     print 'Working on cluster file:', filename
+#     print ' '+str(dat_files.index(cluster_dat)+1)+' of '+str(len(dat_files))
+#     cluster_pos = parse_kharchenko_cluster_dat(cluster_dat)
+#     data_fits.append(cluster_pos)
+# data_fits = vstack(data_fits)
+
+raise SystemExit
+
+# ------------------------------------
+# ------------- Approach 1 -----------
+# ------------------------------------
+
+for cluster_dat in dat_files:
     filename = cluster_dat.split('/')[-1][:-4]
     out_filename = data_dir + kharchenko_subdir + filename + '_'+date_string+'_galah_all.fits'
     print 'Working on cluster file:', filename

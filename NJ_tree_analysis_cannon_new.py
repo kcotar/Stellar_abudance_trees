@@ -6,11 +6,9 @@ import astropy.units as un
 import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 
-from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
+from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler, scale
 from scipy.cluster.hierarchy import linkage, to_tree
-from skbio import DistanceMatrix
-from skbio.tree import nj
 from astropy.table import Table, join
 from getopt import getopt
 
@@ -23,14 +21,16 @@ from norm import *
 
 imp.load_source('distf', '../tSNE_test/distances.py')
 from distf import *
-imp.load_source('esd_dist', '../tSNE_test/esd_distance.py')
-from esd_dist import *
+imp.load_source('tsne_functions', '../tSNE_test/tsne_functions.py')
+from tsne_functions import *
 
 from colorize_tree import *
 from filter_galah import *
 from NJ_tree_analysis_functions import *
 
 from ete3 import Tree
+from matplotlib.widgets import LassoSelector
+from matplotlib.path import Path
 
 
 # ------------------------------------------------------------------
@@ -46,7 +46,7 @@ sys.setrecursionlimit(5000)  # correction for deeper trees (RuntimeError: maximu
 input_arguments = sys.argv
 
 # data settings
-join_repeated_obs = True
+join_repeated_obs = False
 normalize_abund = True
 weights_abund = True
 plot_overall_graphs = True
@@ -62,6 +62,7 @@ linkage_method = 'weighted'
 
 loose_pairs = True
 filter_by_sky_position = True
+tsne_run = False
 # command line parameters parser
 if len(input_arguments) > 3:
     print 'Using arguments given from command line'
@@ -71,7 +72,7 @@ if len(input_arguments) > 3:
     # select only input arguments including -- string
     input_options = [arg for arg in input_arguments if '--' in arg]
     if len(input_options) > 0:
-        opts, args = getopt(input_options, '', ['metric=', 'join=', 'loose=', 'method='])
+        opts, args = getopt(input_options, '', ['metric=', 'join=', 'loose=', 'method=', 'tsne='])
         # set parameters, depending on user inputs
         print input_arguments
         print opts
@@ -84,6 +85,8 @@ if len(input_arguments) > 3:
                 join_repeated_obs = string_bool(a)
             if o == '--loose':
                 loose_pairs = string_bool(a)
+            if o == '--tsne':
+                tsne_run = string_bool(a)
 
 else:
     ra_center = 30.  # degrees
@@ -107,21 +110,27 @@ nj_data_dir = '/home/klemen/NJ_tree_settings/'
 trees_dir = '/home/klemen/Stellar_abudance_trees/'
 # Galah parameters and abundance data
 print 'Reading data'
+
 galah_cannon = Table.read(galah_data_dir+'sobject_iraf_iDR2_171103_cannon.fits')
+abund_cols = get_abundance_cols3(galah_cannon.colnames)
+abund_cols = remove_abundances(abund_cols, what_abund_remove(), type='cannon')
+
+# galah_cannon = Table.read(galah_data_dir+'galah_abund_ANN_SME3.0.1_stacked_median.fits')
+# abund_cols = get_abundance_colsann(galah_cannon.colnames)
+# abund_cols = remove_abundances(abund_cols, what_abund_remove(), type='ann')
 
 # additional kinematics data
 if tgas_ucac5_use is 'tgas':
-    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_tgas_xmatch.csv')['sobject_id', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'parallax', 'parallax_error']
+    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_tgas_xmatch.csv')['sobject_id', 'pmra', 'pmdec', 'parallax']
 elif tgas_ucac5_use is 'ucac5':
-    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_cannon_3.0_ucac5_joined_20171111.fits')['sobject_id', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error']
+    galah_kinematics_xmatch = Table.read(galah_data_dir + 'galah_cannon_3.0_ucac5_joined_20171111.fits')['sobject_id', 'pmra', 'pmdec']
 
 # known stars in clusters in this dataset
-stars_cluster_data = Table.read(galah_data_dir+'clusters/galah_cluster_members_merged_galahonly_20171111.fits')
-clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
+# stars_cluster_data = Table.read(galah_data_dir+'clusters/galah_cluster_members_merged_galahonly_20171111.fits')
+stars_cluster_data = Table.read(galah_data_dir+'clusters/2m_all_clusters_20171111_xmatch_probable.fits')
+# clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 
 # get cannon abundance cols
-abund_cols = get_abundance_cols3(galah_cannon.colnames)
-abund_cols = remove_abundances(abund_cols, what_abund_remove())
 abund_elem = get_element_names(abund_cols)
 abund_cols_use = list(abund_cols)
 abund_cols_f = ['flag_'+col for col in abund_cols]
@@ -163,9 +172,11 @@ galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140
 # -------------------- Abundance data filtering --------------------
 # ------------------------------------------------------------------
 # first remove all somehow flagged observation
-print 'Red and guess flags'
-galah_filter_ok._merge_ok(galah_cannon['red_flag'] == 0)
-galah_filter_ok._merge_ok(galah_cannon['flag_guess'] == 0)
+print 'Red , cannon and guess flags'
+idx_ok_flags = quality_flagging(galah_cannon, cannon_flag=False, chi2outliers=True, return_idx=True)
+galah_filter_ok._merge_ok(idx_ok_flags)
+# galah_filter_ok._merge_ok(galah_cannon['red_flag'] == 0)
+# galah_filter_ok._merge_ok(galah_cannon['flag_guess'] == 0)
 
 # filter by cannon CHI2 value
 # about 35-40k for 1.2 and 75k for 2.1.7
@@ -246,11 +257,11 @@ if normalize_abund:
     print abund_cols_use
     cannon_flags = galah_cannon_subset[abund_cols_f_use].to_pandas().values
     cannon_flags = cannon_bad_flags(cannon_flags)
-    galah_cannon_subset_abund[cannon_flags] = np.nan
+    # galah_cannon_subset_abund[cannon_flags] = np.nan
     cannon_data_means = np.nanmean(galah_cannon_subset_abund, axis=0)
     cannon_data_stds = np.nanstd(galah_cannon_subset_abund, axis=0)
     galah_cannon_subset_abund = (galah_cannon_subset_abund - cannon_data_means) / cannon_data_stds
-    print cannon_data_means, cannon_data_stds
+    # print cannon_data_means, cannon_data_stds
     cannon_data_means[:] = 0
 
 # apply weights to the normalized abund parameters if requested to do so
@@ -282,8 +293,9 @@ elif hierachical_scipy:
 if loose_pairs:
     suffix += '_loose'
 
-final_dir = 'NJ_tree'
+final_dir = 'NJ_clusters'
 final_dir += '_cannon_3.0'
+# final_dir += '_ANN'
 
 final_dir += '_abundflags'+suffix+suffix_pos
 move_to_dir(final_dir)
@@ -313,6 +325,46 @@ plt.scatter(galah_cannon_subset['ra'][idx_in], galah_cannon_subset['dec'][idx_in
 plt.scatter(galah_cannon_subset['ra'], galah_cannon_subset['dec'], lw=0, s=1, c='black')
 plt.savefig('area_sky_objects.png', dpi=500)
 plt.close()
+
+if tsne_run:
+    tsne_csv_out = 'tsne.fits'
+    if os.path.isfile(tsne_csv_out):
+        tsne_out = Table.read(tsne_csv_out)
+    else:
+        print 'Computing tsne'
+        tsne_class = TSNE(n_components=2, perplexity=40.0, n_iter=1000, n_iter_without_progress=350, init='random', verbose=1,
+                          method='barnes_hut', angle=0.3, metric='precomputed', min_grad_norm=1e-07, learning_rate=150.0)
+        dist_values = cityblock_nans(galah_cannon_subset_abund, triu=False)
+        print dist_values [:5,:5]
+        tsne_res = tsne_class.fit_transform(dist_values)
+
+        # output tsne plot(s)
+        plt.scatter(tsne_res[:, 0], tsne_res[:, 1], lw=0, c='black', s=1)
+        plt.savefig('tsne.png', dpi=500)
+        plt.close()
+        for cluster in np.unique(stars_cluster_data['cluster']):
+            cluster_targets = stars_cluster_data[stars_cluster_data['cluster'] == cluster]['sobject_id']
+            idx_cluster = np.in1d(galah_cannon_subset['sobject_id'], cluster_targets)
+            if np.sum(idx_cluster) <= 0:
+                continue
+            plt.scatter(tsne_res[:, 0][idx_cluster], tsne_res[:, 1][idx_cluster], lw=0, c='red', s=5)
+            plt.scatter(tsne_res[:, 0], tsne_res[:, 1], lw=0, c='black', s=1)
+            plt.savefig('tsne_'+cluster+'.png', dpi=500)
+            plt.close()
+
+        # output data
+        tsne_out = galah_cannon_subset['sobject_id', 'galah_id']
+        tsne_out['tsne_axis_1'] = tsne_res[:, 0]
+        tsne_out['tsne_axis_2'] = tsne_res[:, 1]
+        tsne_out.write(tsne_csv_out)
+
+    # manual investigation of computed tSNE projection
+    # fig, ax = plt.subplots(1, 1)
+    # pts = ax.scatter(tsne_out['tsne_axis_1'], tsne_out['tsne_axis_2'], lw=0, c='black', s=4)
+    # selector = PointSelector(ax, tsne_out)
+    # plt.show()
+    # plt.close()
+
 
 # ------------------------------------------------------------------
 # -------------------- Tree computation ----------------------------
@@ -441,6 +493,26 @@ for node_cur in nodes_to_investigate:
     n_rep = len(idx_nodes)
     if n_rep > 1:
         nodes_to_remove.append(idx_nodes[1:])
+nodes_to_investigate = np.delete(nodes_to_investigate, np.unique(np.hstack(nodes_to_remove)))
+
+# check if node is already inbeded in higher one
+print 'Removing imbeded tree cuts'
+tree_root = tree_struct.get_tree_root()
+nodes_to_remove = list([])
+n_nodes = len(nodes_to_investigate)
+for i_n in range(0, n_nodes):
+    for j_n in range(i_n+1, n_nodes):
+        node_cur1 = nodes_to_investigate[i_n]
+        node_cur2 = nodes_to_investigate[j_n]
+        com_anc = node_cur1.get_common_ancestor(node_cur2)
+        if com_anc == node_cur1 or com_anc == node_cur2:
+            # delete one that is father from the root
+            r_dist1 = tree_root.get_distance(node_cur1)
+            r_dist2 = tree_root.get_distance(node_cur2)
+            if r_dist1 < r_dist2:
+                nodes_to_remove.append(j_n)
+            else:
+                nodes_to_remove.append(i_n)
 nodes_to_investigate = np.delete(nodes_to_investigate, np.unique(np.hstack(nodes_to_remove)))
 
 # colorize tree structures/nodes/branches/leaves/something that were/will be evaluated, test for selection criteria

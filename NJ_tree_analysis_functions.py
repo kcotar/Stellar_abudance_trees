@@ -2,7 +2,7 @@ import os, imp, time
 import numpy as np
 import astropy.units as un
 import astropy.coordinates as coord
-import gala.coordinates as gal_coord
+#import gala.coordinates as gal_coord
 
 from sklearn.metrics.pairwise import manhattan_distances, euclidean_distances
 from ete3 import Tree
@@ -131,9 +131,9 @@ def start_gui_explorer(objs, manual=True, save_dir='', i_seq=1, kinematics_sourc
     txt.write(','.join(objs))
     txt.close()
     if manual:
-        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
+        exec_str = '/home/klemen/conda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis.py ' + out_file
     else:
-        exec_str = '/home/klemen/anaconda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
+        exec_str = '/home/klemen/conda2/bin/python '+code_path+'GUI_abundance_kinematics_analysis_automatic.py '
         if i_seq is not None:
             exec_str += out_file + ' ' + save_dir+'/node_{:05d}'.format(i_seq)
         else:
@@ -192,3 +192,27 @@ def get_major_split(t_node, max_add_objects=8, n_levels=None):
                 break
             else:
                 n_objects_up = n_ancestor_obj_names
+
+
+class PointSelector:
+    def __init__(self, axis, tsne_data):
+        self.tsne_data = Table(tsne_data)
+        self.lasso = LassoSelector(axis, self.determine_points)
+
+    def determine_points(self, vertices):
+        if len(vertices) > 0:
+            vert_path = Path(vertices)
+            # determine objects in region
+            selected = [str(tsne_row['sobject_id']) for tsne_row in self.tsne_data if
+                        vert_path.contains_point((tsne_row['tsne_axis_1'], tsne_row['tsne_axis_2']))]
+            n_selected = len(selected)
+            if n_selected > 0:
+                # merge datasets
+                print selected
+                start_gui_explorer(selected, manual=True, initial_only=False,
+                                   loose=True, save_dir=trees_dir + final_dir,
+                                   kinematics_source='ucac5')
+            else:
+                print 'Number of points in region is too small'
+        else:
+            print 'Number of vertices in selection is too small'
