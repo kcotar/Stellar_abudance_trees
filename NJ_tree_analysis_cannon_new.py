@@ -104,8 +104,7 @@ suffix = ''
 # -------------------- Data reading and initial handling -----------
 # ------------------------------------------------------------------
 
-galah_data_dir = '/home/klemen/GALAH_data/'
-actions_data_dir = '/home/klemen/Aquarius_membership/'
+galah_data_dir = '/home/klemen/data4_mount/'
 nj_data_dir = '/home/klemen/NJ_tree_settings/'
 trees_dir = '/home/klemen/Stellar_abudance_trees/'
 # Galah parameters and abundance data
@@ -323,6 +322,8 @@ print 'Plotting objects on sky'
 idx_in = np.in1d(galah_cannon_subset['sobject_id'], stars_cluster_data['sobject_id'])
 plt.scatter(galah_cannon_subset['ra'][idx_in], galah_cannon_subset['dec'][idx_in], lw=0, s=2.5, c='red')
 plt.scatter(galah_cannon_subset['ra'], galah_cannon_subset['dec'], lw=0, s=1, c='black')
+# plt.xlim((ra_center-position_radius, ra_center+position_radius))
+# plt.ylim((dec_center-position_radius, dec_center+position_radius))
 plt.savefig('area_sky_objects.png', dpi=500)
 plt.close()
 

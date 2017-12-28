@@ -22,12 +22,19 @@ def parse_kharchenko_cluster_dat(path):
                      dtype=('f8', 'f8', 'i8', 'f8', 'f8', 'f8', 'i8'))
     # open txt dat file
     print path
-    txt = open(path, 'r')
-    txt_data = txt.readlines()
-    txt.close()
     filename = path.split('/')[-1][:-4]
     fits_file_split = filename.split('_')
     cluster_name = fits_file_split[2] + '_' + fits_file_split[3]
+
+    out_filename = path[:-3]+'.fits'
+    if os.path.isfile(out_filename):
+        print ' Already exists, skipping.'
+        return True
+
+    txt = open(path, 'r')
+    txt_data = txt.readlines()
+    txt.close()
+
     print cluster_name
     # iterate over lines
     # n_cols = len(out_cols)
@@ -46,7 +53,7 @@ def parse_kharchenko_cluster_dat(path):
         data_out.add_row(row_values[[0,1,19,20,21,22,23]])
     data_out['ra'] *= 15.  # hour to degree
     data_out['cluster'] = cluster_name
-    data_out.write(path[:-3]+'.fits')
+    data_out.write(out_filename)
     return True
 
 
