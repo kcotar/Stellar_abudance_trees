@@ -4,7 +4,9 @@ from astropy.table import Table, vstack, join
 import numpy as np
 from NJ_tree_analysis_functions import start_gui_explorer
 import matplotlib.pyplot as plt
-
+import imp
+imp.load_source('helper', '../tSNE_test/helper_functions.py')
+from helper import move_to_dir
 
 def output_plot(s_id, data, path=None, rv_range=None):
     data_sub = data[np.in1d(data['sobject_id'], s_id)]
@@ -29,9 +31,17 @@ def output_plot(s_id, data, path=None, rv_range=None):
 cluster_dir = '/home/klemen/data4_mount/clusters/'
 
 suffix = '_probable'
-date_string = '20171111'
-cluster_data_all = Table.read(cluster_dir+'2m_all_clusters_20171111_xmatch.fits')
-galah_all = Table.read('/home/klemen/data4_mount/' + 'sobject_iraf_52_reduced_20171111.fits')
+date_string = '20180104'
+
+# # convert csv with positions to proper table
+# clusters_all = Table.read(cluster_dir+'2m_all_clusters_'+date_string+'.fits')['khar_id', 'Ps', 'Pkin', 'PJKs', 'PJH', 'MWSC', 'cluster']
+# xmatch_csv = Table.read(cluster_dir+'2m_all_clusters_pos_'+date_string+'_xmatch.csv')['sobject_id', 'ra', 'dec', 'khar_id']
+# xmatch_csv_all_data = join(xmatch_csv, clusters_all, keys='khar_id')
+# xmatch_csv_all_data.write(cluster_dir+'2m_all_clusters_'+date_string+'_xmatch.fits', overwrite=True)
+
+cluster_data_all = Table.read(cluster_dir+'2m_all_clusters_'+date_string+'_xmatch.fits')
+galah_all = Table.read('/home/klemen/data4_mount/' + 'sobject_iraf_52_reduced_'+date_string+'.fits')
+
 galah_cannon_ucac5 = Table.read('/home/klemen/data4_mount/' + 'galah_cannon_3.0_ucac5_joined_20171111.fits')
 
 # NJ settings
@@ -41,7 +51,7 @@ txt_out = open('terminal_run_clusters'+suffix+'.txt', 'w')
 txt_out2 = open('terminal_run_clusters_sobject_ids'+suffix+'.txt', 'w')
 data = list([])
 
-chdir('Kharchenko_selection_final')
+move_to_dir('Kharchenko_selection_final_'+date_string)
 
 possible_clusters = np.unique(cluster_data_all['cluster'])
 for cluster_name in possible_clusters:
@@ -61,11 +71,12 @@ for cluster_name in possible_clusters:
         fits_data.sort('sobject_id')
 
         # most probable cluster members based on multiple parameters
-        idx_probable = np.logical_and(np.logical_and(fits_data['Pkin'] > 30.0,
-                                                     fits_data['PJH'] > 50.0),
-                                      np.logical_and(fits_data['PJKs'] > 50.0,
+        P_prob = 40
+        idx_probable = np.logical_and(np.logical_and(fits_data['Pkin'] > P_prob,
+                                                     fits_data['PJH'] > P_prob),
+                                      np.logical_and(fits_data['PJKs'] > P_prob,
                                                      fits_data['Ps'] >= 1))
-        print 'N prob (1): ', np.sum(idx_probable)
+        print ' N probable (1): ', np.sum(idx_probable)
         if np.sum(idx_probable) < 5:
             print ' Low number of probable members'
             continue
@@ -75,8 +86,12 @@ for cluster_name in possible_clusters:
         #                    kinematics_source='ucac5')
 
         cluster_galah_join = join(fits_data['sobject_id', 'cluster', 'Pkin', 'Ps'][idx_probable], galah_all['sobject_id', 'rv_guess', 'ra', 'dec'], keys='sobject_id')
+        if len(cluster_galah_join) < 5:
+            print ' Not enough members ('+str(len(cluster_galah_join))+') after joining clusters and GALAH guess parameter data.'
+            continue
         rv_mean = np.nanmedian(cluster_galah_join['rv_guess'])
         rv_std = np.nanstd(cluster_galah_join['rv_guess'])
+        rv_std = np.max([rv_std, 5])  # determine minimal rv std separation for cluster
 
         output_plot(cluster_galah_join['sobject_id'], galah_cannon_ucac5,
                     path=cluster_name + '_1.png', rv_range=(rv_mean-rv_std, rv_mean+rv_std))
@@ -116,10 +131,15 @@ for cluster_name in possible_clusters:
         # output_plot(fits_data['sobject_id'], galah_cannon_ucac5, cluster_name + '_3.png')
 
         # append, print
-        data.append(fits_data)
-        ra_mean = np.mean(fits_data['ra'])
-        dec_mean = np.mean(fits_data['dec'])
-        print '', len(fits_data), ra_mean, dec_mean
+        if len(fits_data) <= 0:
+            print ' N probable (2): 0'
+            continue
+        else:
+            data.append(fits_data)
+            ra_mean = np.mean(fits_data['ra'])
+            dec_mean = np.mean(fits_data['dec'])
+            print ' N probable (2): ', len(fits_data), '    ', ra_mean, dec_mean
+        # print '', len(fits_data), ra_mean, dec_mean
 
         # create and save execution command
         txt_out.write(cluster_name+' {:.0f} \n'.format(len(fits_data)))
@@ -143,8 +163,8 @@ txt_out.close()
 txt_out2.close()
 
 # stack all read data together
-chdir('/home/klemen/data4_mount/clusters/')
-out_file = '2m_all_clusters_20171111_xmatch_probable.fits'
+chdir(cluster_dir)
+out_file = '2m_all_clusters_'+date_string+'_xmatch_probable.fits'
 data_all = vstack(data)
 if path.isfile(out_file):
     remove(out_file)

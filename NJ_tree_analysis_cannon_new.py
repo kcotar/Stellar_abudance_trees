@@ -50,7 +50,7 @@ join_repeated_obs = False
 normalize_abund = True
 weights_abund = True
 plot_overall_graphs = True
-perform_data_analysis = True
+perform_data_analysis = False
 investigate_repeated = True
 save_results = True
 manual_GUI_investigation = False
@@ -114,7 +114,7 @@ galah_cannon = Table.read(galah_data_dir+'sobject_iraf_iDR2_171103_cannon.fits')
 abund_cols = get_abundance_cols3(galah_cannon.colnames)
 abund_cols = remove_abundances(abund_cols, what_abund_remove(), type='cannon')
 
-# galah_cannon = Table.read(galah_data_dir+'galah_abund_ANN_SME3.0.1_stacked_median.fits')
+# galah_cannon = Table.read(galah_data_dir+'galah_abund_ANN_SME3.0.1_stacked_median_ext0.fits')
 # abund_cols = get_abundance_colsann(galah_cannon.colnames)
 # abund_cols = remove_abundances(abund_cols, what_abund_remove(), type='ann')
 
@@ -126,7 +126,7 @@ elif tgas_ucac5_use is 'ucac5':
 
 # known stars in clusters in this dataset
 # stars_cluster_data = Table.read(galah_data_dir+'clusters/galah_cluster_members_merged_galahonly_20171111.fits')
-stars_cluster_data = Table.read(galah_data_dir+'clusters/2m_all_clusters_20171111_xmatch_probable.fits')
+stars_cluster_data = Table.read(galah_data_dir+'clusters/2m_all_clusters_20180104_xmatch_probable.fits')
 # clusters_ra, clusters_dec = define_cluster_centers(stars_cluster_data, galah_cannon)
 
 # get cannon abundance cols
@@ -172,7 +172,7 @@ galah_filter_ok.filter_attribute(galah_cannon, attribute='sobject_id', value=140
 # ------------------------------------------------------------------
 # first remove all somehow flagged observation
 print 'Red , cannon and guess flags'
-idx_ok_flags = quality_flagging(galah_cannon, cannon_flag=False, chi2outliers=True, return_idx=True)
+idx_ok_flags = quality_flagging(galah_cannon, cannon_flag=True, chi2outliers=True, return_idx=True)
 galah_filter_ok._merge_ok(idx_ok_flags)
 # galah_filter_ok._merge_ok(galah_cannon['red_flag'] == 0)
 # galah_filter_ok._merge_ok(galah_cannon['flag_guess'] == 0)
@@ -181,7 +181,7 @@ galah_filter_ok._merge_ok(idx_ok_flags)
 # about 35-40k for 1.2 and 75k for 2.1.7
 # galah_filter_ok.filter_attribute(galah_cannon, attribute='chi2_cannon', value=35000, comparator='<')
 print 'SNR C2 cut'
-galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c2_iraf', value=20, comparator='>')
+galah_filter_ok.filter_attribute(galah_cannon, attribute='snr_c2_iraf', value=10, comparator='>')
 
 # filter out classes of possibly problematic stars as detected by Gregor
 # determine which problematic stars might be problematic for abundance determination
@@ -194,7 +194,7 @@ galah_filter_ok.filter_objects(galah_cannon, galah_kinematics_xmatch, identifier
 
 # select only object with enough unglagged abundances
 print 'Only enough unflagged abundances'
-galah_filter_ok._merge_ok(object_with_min_abundances(galah_cannon, abund_cols_f_use, len(abund_cols_f_use)/2))
+galah_filter_ok._merge_ok(object_with_min_abundances(galah_cannon, abund_cols_f_use, len(abund_cols_f_use)/3.))
 
 # create a subset defined by filters above
 galah_cannon_subset = galah_filter_ok.apply_filter(galah_cannon)
@@ -296,7 +296,7 @@ final_dir = 'NJ_clusters'
 final_dir += '_cannon_3.0'
 # final_dir += '_ANN'
 
-final_dir += '_abundflags'+suffix+suffix_pos
+final_dir += '_abundflags'+suffix+suffix_pos+'_2'
 move_to_dir(final_dir)
 
 if filter_by_sky_position:
@@ -336,7 +336,7 @@ if tsne_run:
         tsne_class = TSNE(n_components=2, perplexity=40.0, n_iter=1000, n_iter_without_progress=350, init='random', verbose=1,
                           method='barnes_hut', angle=0.3, metric='precomputed', min_grad_norm=1e-07, learning_rate=150.0)
         dist_values = cityblock_nans(galah_cannon_subset_abund, triu=False)
-        print dist_values [:5,:5]
+        print dist_values[:5, :5]
         tsne_res = tsne_class.fit_transform(dist_values)
 
         # output tsne plot(s)
@@ -348,7 +348,7 @@ if tsne_run:
             idx_cluster = np.in1d(galah_cannon_subset['sobject_id'], cluster_targets)
             if np.sum(idx_cluster) <= 0:
                 continue
-            plt.scatter(tsne_res[:, 0][idx_cluster], tsne_res[:, 1][idx_cluster], lw=0, c='red', s=5)
+            plt.scatter(tsne_res[:, 0][idx_cluster], tsne_res[:, 1][idx_cluster], lw=0, c='red', s=7)
             plt.scatter(tsne_res[:, 0], tsne_res[:, 1], lw=0, c='black', s=1)
             plt.savefig('tsne_'+cluster+'.png', dpi=500)
             plt.close()

@@ -11,10 +11,9 @@ kharchenko_subdir = 'clusters/Kharchenko_2013/stars/'
 fits_files = glob(data_dir + kharchenko_subdir + '2m_*.fits')
 print 'Number of fits files:', len(fits_files)
 
-date_string = '20171111'
-galah_stars_pos = Table.read(data_dir + 'sobject_iraf_52_reduced_'+date_string+'.fits')
-galah_stars_pos = galah_stars_pos[np.logical_and(galah_stars_pos['red_flag'] & 64 != 64,
-                                                 galah_stars_pos['flag_guess'] == 0)]
+date_string = '20180104'
+galah_stars_pos = Table.read(data_dir + 'sobject_iraf_52_reduced_'+date_string+'_pos_all.fits')
+galah_stars_pos = galah_stars_pos[np.isfinite(galah_stars_pos['ra'])]
 galah_coords = coord.SkyCoord(ra=galah_stars_pos['ra'] * un.deg, dec=galah_stars_pos['dec'] * un.deg)
 
 fits_all = list([])
